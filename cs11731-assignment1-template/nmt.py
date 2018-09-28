@@ -118,6 +118,43 @@ class NMT(object):
 
         return scores
 
+    def embed(words):
+        if type(words) == 'list':
+            return [embed(word) for word in words]
+        return word # todo
+
+    def RNN_e(m_t, h_t):
+        pass # todo
+
+    class Hypothesis(object):
+        def __init__(self, h_t, value = ['<s>'], score = 0.):
+            self.h_t = h_t
+            self.value = value
+            self.score = score
+            self.incomplete = self.value[-1] == '</s>'
+
+        def completed(self):
+            return self.value[-1] == '</s>'
+
+        def generate_candidates(self, W_hs, b_s):
+            if self.incomplete:
+                m_t = embed(self.value[-1])
+                self.h_t = RNN_e(m_t, self.h_t)
+                s_t = W_hs * self.h_t + b_s
+                log_p_t = torch.nn.functional.log_softmax(s_t, dim = 0)
+                return log_p_t + self.score
+            return self.score
+
+        def extend(e_t, score):
+            return Hypothesis(self.h_t, self.value + [e_t], score)
+
+    def divmod_(idx, lens):
+        ret = 0
+        while(idx >= lens[ret]):
+            idx -= lens[ret]
+            ret += 1
+        return ret, idx
+
     def beam_search(self, src_sent: List[str], beam_size: int=5, max_decoding_time_step: int=70) -> List[Hypothesis]:
         """
         Given a single source sentence, perform beam search
@@ -132,6 +169,31 @@ class NMT(object):
                 value: List[str]: the decoded target sentence, represented as a list of words
                 score: float: the log-likelihood of the target sentence
         """
+
+        src_encodings, decoder_init_state = encode([src_sent])
+
+        time = 0
+        hypotheses = [Hypothesis(decoder_init_state) for i in range(beam_size)]
+        while(time < max_decoding_time_step):
+            time += 1
+            all_candidates = [hypothesis.generate_candidates(self.W_hs, self.b_s) for hypothesis in hypotheses]
+            lens = [len(candidates) for candidates in all_candidates] # 1 or |V_tgt|
+
+            scores, indices = torch.topk(input = torch.cat(all_candidates, dim = 0), k = beam_size, dim = 0)
+
+            new_hypotheses = []
+            for index in indices:
+                hyp_idx, word_idx = divmod_(index, lens)
+                hypothesis = hypotheses[hyp_idx]
+                new_hypotheses.append(
+                    hypothesis.incomplete
+                    ? hypothesis.extend(
+                        vocab.tgt.id2word[word_idx], float(scores[index]))
+                    : hypothesis)
+
+            hypotheses = new_hypotheses
+            if sum(hypothesis.incomplete for hypothesis in hypotheses) == 0:
+                break
 
         return hypotheses
 
