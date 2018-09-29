@@ -50,6 +50,15 @@ from nltk.translate.bleu_score import corpus_bleu, sentence_bleu, SmoothingFunct
 from utils import read_corpus, batch_iter
 from vocab import Vocab, VocabEntry
 
+# begin yingjinl
+import os
+import torch
+import torch.nn as nn
+import torch.autograd.Variable as Variable
+from torch import optim
+import torch.nn.functional as F
+from models import *
+# end yingjinl
 
 Hypothesis = namedtuple('Hypothesis', ['value', 'score'])
 
@@ -64,7 +73,22 @@ class NMT(object):
         self.dropout_rate = dropout_rate
         self.vocab = vocab
 
-        # initialize neural network layers...
+        # initialize neural network laBaselineGRUEncoderyers...
+
+        # begin yingjinl
+        self.encoder = BaselineGRUEncoder( self.embed_size, self.hidden_size, 2 )
+        self.decoder = BaselineGRUDecoder( self.embed_size, self.hidden_size, self.output_size, 2 )
+        if USE_CUDA:
+            self.encoder.cuda()
+            self.decoder.cuda()
+        self.lr = 1e-4
+        self.encoder_optim = optim.SGD( filter( lambda x: x.requires_grad, self.encoder.parameters() ),
+                                  lr=self.lr )
+        self.decoder_optim = optim.SGD( filter( lambda x: x.requires_grad, self.decoder.parameters() ),
+                                  lr=self.lr )
+        self.loss = nn.NLLLoss()
+        # end yingjinl
+
 
     def __call__(self, src_sents: List[List[str]], tgt_sents: List[List[str]]) -> Tensor:
         """
@@ -83,6 +107,12 @@ class NMT(object):
         src_encodings, decoder_init_state = self.encode(src_sents, tgt_sents)
         scores = self.decode(src_encodings, decoder_init_state, tgt_sents)
 
+        # begin yingjinl
+        scores.backward()
+        self.encoder_optim.step()
+        self.decoder_optim.step()
+        # end yingjinl
+
         return scores
 
     def encode(self, src_sents: List[List[str]]) -> Tuple[Tensor, Any]:
@@ -97,8 +127,23 @@ class NMT(object):
                 with shape (batch_size, source_sentence_length, encoding_dim), or in orther formats
             decoder_init_state: decoder GRU/LSTM's initial state, computed from source encodings
         """
+        # begin yingjinl
 
-        return src_encodings, decoder_init_state
+        #( batch_size, sentence length, embed length )
+        src_embed = sef.embed( src_sents )
+        [ batch_size, sentence_len, embed_len ] = src_embed.shape
+
+        src_embed = src_embed.reshape( ( sentence_len, batch_size, embed_len ) )
+        src_var = Variable( src_embed )
+        src_var = src_var.cuda if USE_CUDA else src_var
+
+        e_hidden = encoder.initial_hidden( batch_size )
+        for e_i in range( sentence_len ):
+            _, e_hidden = self.encoder( src_var[ e_i ], e_hidden, batch_size )
+
+        decoder_init_state = Variable( torch.LongTensor( [ SOS_embed ] * batch_size, device = DEVICE) )
+        return e_hidden, decoder_init_state
+        # end yingjinl
 
     def decode(self, src_encodings: Tensor, decoder_init_state: Any, tgt_sents: List[List[str]]) -> Tensor:
         """
@@ -115,10 +160,28 @@ class NMT(object):
                 log-likelihood of generating the gold-standard target sentence for
                 each example in the input batch
         """
+        scores = 0
+        tar_embed = sef.embed( tgt_sents )
+        [ batch_size, sentence_len, embed_len ] = tar_embed.shape
+
+        tar_embed = tar_embed.reshape( sentence_len, batch_size, embed_len  )
+        tar_var = Variable( tar_embed )
+        tar_var = tar_var.cuda if USE_CUDA else tar_var
+
+        d_input = decoder_init_state
+        d_hidden = src_encodings
+        for d_i in range( sentence_len ):
+            d_out, d_hidden = self.decoder( d_input, d_hidden, batch_size )
+            topv, topi = d_input.data.topk( 1 )
+            d_input = Variable( torch.cat( topi ) ).cuda() if USE_CUDA else Variable( torch.cat( topi ) )
+
+            scores += self.loss( d_out, tar_var[ d_i, : ] )
 
         return scores
 
-    def embed(words):
+    # returns ndarray of shape ( batch_size, sentence length, embed length )
+    # padd to the longest if sentences are not equal in length
+    def embed(self, words):
         if type(words) == 'list':
             return [embed(word) for word in words]
         return word # todo
@@ -235,6 +298,14 @@ class NMT(object):
         Returns:
             model: the loaded model
         """
+        if os.path.isfile( model_path ):
+            cpt = torch.load( model_path )
+            self.encoder.load_state_dict( cpt[ "encoder_state" ] )
+            self.decoder.load_state_dict( cpt[ "decoder_state" ] )
+            self.encoder_optim.load_state_dict( cpt[ "encoder_optim_state" ] )
+            self.decoder_optim.load_state_dict( cpt[ "decoder_optim_state" ] )
+        else:
+            print( "No checkpoint found in {}".format( model_path ) )
 
         return model
 
@@ -242,8 +313,13 @@ class NMT(object):
         """
         Save current model to file
         """
+        cpt = dict()
+        cpt[ "encoder_state" ] = self.encoder.state_dict()
+        cpt[ "decoder_state" ] = self.decoder.state_dict()
+        cpt[ "encoder_optim_state" ] = self.encoder_optim.state_dict()
+        cpt[ "decoder_optim_state" ] = self.decoder_optim.state_dict()
 
-        raise NotImplementedError()
+        torch.save( cpt, path )
 
 
 def compute_corpus_level_bleu_score(references: List[List[str]], hypotheses: List[Hypothesis]) -> float:
