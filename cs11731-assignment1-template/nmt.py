@@ -241,17 +241,15 @@ class NMT(object):
         """
         if _type == "src":
             vocab_entry = self.vocab.src
-            word_indices_list = vocab_entry.words2indices( sentence_list )
-            word_indices_list = self.pad_batch( word_indices_list )
-            sentence_batch = self.src_embedder( word_indices_list )
-
         elif _type == "tar":
             vocab_entry = self.vocab.tgt
-            word_indices_list = vocab_entry.words2indices( sentence_list )
-            word_indices_list = self.pad_batch( word_indices_list )
-            sentence_batch = self.tar_embedder( word_indices_list )
         else:
             print( "_type not implemented in self.embed()" )
+
+        word_indices_list = vocab_entry.words2indices( sentence_list )
+        word_indices_list = self.pad_batch( word_indices_list )
+        sentence_batch = self.tar_embedder( word_indices_list )
+
         word_indices_list = Variable( word_indices_list ).cuda() if USE_CUDA else Variable( word_indices_list )
         return word_indices_list, sentence_batch
 
