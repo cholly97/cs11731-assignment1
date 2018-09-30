@@ -173,7 +173,8 @@ class NMT(object):
         for e_i in range( sentence_len ):
             _, e_hidden = self.encoder( src_var[ e_i ], e_hidden, batch_size )
 
-        decoder_init_state = Variable( torch.LongTensor( [ self.embed( [ 1 ] ) for i in range( batch_size ) ] , device = DEVICE ) ) # should this be self.embed([''<s>'])?
+        _, e_0s = self.embed( [ [ '<s>' ] for i in in range( batch_size ) ] )
+        decoder_init_state = Variable( torch.LongTensor( e_0s , device = DEVICE ) )
         return e_hidden, decoder_init_state
         # end yingjinl
 
@@ -205,8 +206,8 @@ class NMT(object):
         for d_i in range( sentence_len ):
             d_out, d_hidden = self.decoder( d_input, d_hidden, batch_size )
             # code taken from https://github.com/pengyuchen/PyTorch-Batch-Seq2seq/blob/master/seq2seq_translation_tutorial.py
-            topv, topi = d_input.data.topk( 1 )
-            d_input = Variable( torch.cat( topi ) ).cuda() if USE_CUDA else Variable( torch.cat( topi ) ) # should this be embedded?
+            topv, topi = d_out.data.topk( 1, dim = 1 )
+            d_input = Variable( self.tar_embedder( topi ).cuda() if USE_CUDA else Variable( torch.cat( topi ) ) # should this be embedded?
             scores += self.loss( d_out, tar_var[ d_i, : ] )
         return scores
     # begin yingjinl
