@@ -173,7 +173,7 @@ class NMT(object):
         for e_i in range( sentence_len ):
             _, e_hidden = self.encoder( src_var[ e_i ], e_hidden, batch_size )
 
-        _, e_0s = self.embed( [ [ '<s>' ] for i in in range( batch_size ) ] )
+        _, e_0s = self.embed( [ [ '<s>' ] for i in range( batch_size ) ] )
         decoder_init_state = Variable( torch.LongTensor( e_0s , device = DEVICE ) )
         return e_hidden, decoder_init_state
         # end yingjinl
