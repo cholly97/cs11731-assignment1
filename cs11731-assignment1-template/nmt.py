@@ -207,7 +207,8 @@ class NMT(object):
             d_out, d_hidden = self.decoder( d_input, d_hidden, batch_size )
             # code taken from https://github.com/pengyuchen/PyTorch-Batch-Seq2seq/blob/master/seq2seq_translation_tutorial.py
             topv, topi = d_out.data.topk( 1, dim = 1 )
-            d_input = Variable( self.tar_embedder( topi ) ).cuda() if USE_CUDA else Variable( torch.cat( topi ) ) # should this be embedded?
+            d_input = Variable( self.tar_embedder( topi ) )
+            if USE_CUDA: d_input = d_input.cuda()
             scores += self.loss( d_out, tar_var[ d_i, : ] )
         return scores
     # begin yingjinl
