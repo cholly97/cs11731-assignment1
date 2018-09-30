@@ -22,7 +22,7 @@ def input_transpose(sents, pad_token):
 
 def read_corpus(file_path, source):
     data = []
-    for line in open(file_path):
+    for line in open(file_path, encoding = "utf-8" ):
         sent = line.strip().split(' ')
         # only append <s> and </s> to the target sentence
         if source == 'tgt':
