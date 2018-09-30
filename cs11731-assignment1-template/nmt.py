@@ -260,13 +260,9 @@ class NMT(object):
 
     # end yingjinl
 
-
-    def RNN_e(m_t, h_t):
-        pass # todo
-
     class Hypothesis(object):
-        def __init__(self, h_t, value = ['<s>'], score = 0.):
-            self.h_t = h_t
+        def __init__(self, d_hidden, value = ['<s>'], score = 0.):
+            self.d_hidden = d_hidden
             self.value = value
             self.score = score
             self.incomplete = self.value[-1] == '</s>'
@@ -274,17 +270,13 @@ class NMT(object):
         def completed(self):
             return self.value[-1] == '</s>'
 
-        def generate_candidates(self, W_hs, b_s):
+        def generate_candidates(self, model):
             if self.incomplete:
-                m_t = embed(self.value[-1])
-                self.h_t = RNN_e(m_t, self.h_t)
-                s_t = W_hs * self.h_t + b_s
-                log_p_t = torch.nn.functional.log_softmax(s_t, dim = 0)
-                return log_p_t + self.score
+                d_input = [model.embed(self.value[-1:])]
+                d_out, self.d_hidden = model.decoder(d_input, self.d_hidden, 1)
+                scores = torch.nn.functional.log_softmax(d_out, dim = 0)
+                return scores + self.score
             return self.score
-
-        def extend(e_t, score):
-            return Hypothesis(self.h_t, self.value + [e_t], score)
 
     def divmod_(idx, lens):
         ret = 0
@@ -322,7 +314,7 @@ class NMT(object):
         hypotheses = [Hypothesis(decoder_init_state) for i in range(beam_size)]
         while(time < max_decoding_time_step):
             time += 1
-            all_candidates = [hypothesis.generate_candidates(self.W_hs, self.b_s) for hypothesis in hypotheses]
+            all_candidates = [hypothesis.generate_candidates(self) for hypothesis in hypotheses]
             lens = [len(candidates) for candidates in all_candidates] # 1 or |V_tgt|
 
             scores, indices = torch.topk(input = torch.cat(all_candidates, dim = 0), k = beam_size, dim = 0)
@@ -332,10 +324,11 @@ class NMT(object):
                 hyp_idx, word_idx = divmod_(index, lens)
                 hypothesis = hypotheses[hyp_idx]
                 new_hypotheses.append(
-                    hypothesis.incomplete
-                    if hypothesis.extend(
-                        vocab.tgt.id2word[word_idx], float(scores[index]))
-                    else hypothesis)
+                    if hypothesis.incomplete:
+                        Hypothesis(hypothesis.d_hidden,
+                                   hypothesis.value + [vocab.tgt.id2word[word_idx]],
+                                   float(scores[index]))
+                    else: hypothesis)
 
             hypotheses = new_hypotheses
             if sum(hypothesis.incomplete for hypothesis in hypotheses) == 0:
