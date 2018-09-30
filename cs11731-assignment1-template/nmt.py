@@ -324,11 +324,10 @@ class NMT(object):
                 hyp_idx, word_idx = divmod_(index, lens)
                 hypothesis = hypotheses[hyp_idx]
                 new_hypotheses.append(
-                    if hypothesis.incomplete:
-                        Hypothesis(hypothesis.d_hidden,
-                                   hypothesis.value + [vocab.tgt.id2word[word_idx]],
-                                   float(scores[index]))
-                    else: hypothesis)
+                    Hypothesis(hypothesis.d_hidden,
+                               hypothesis.value + [vocab.tgt.id2word[word_idx]],
+                               float(scores[index]))
+                    if hypothesis.incomplete else hypothesis)
 
             hypotheses = new_hypotheses
             if sum(hypothesis.incomplete for hypothesis in hypotheses) == 0:
