@@ -42,7 +42,7 @@ import time
 from collections import namedtuple
 
 import numpy as np
-from typing import List, Tuple, Dict, Set, Union
+from typing import List, Tuple, Dict, Set, Union, Any
 from docopt import docopt
 from tqdm import tqdm
 from nltk.translate.bleu_score import corpus_bleu, sentence_bleu, SmoothingFunction
@@ -121,7 +121,7 @@ class NMT(object):
         # end yingjinl
 
 
-    def __call__(self, src_sents: List[List[str]], tgt_sents: List[List[str]]) -> Tensor:
+    def __call__(self, src_sents: List[List[str]], tgt_sents: List[List[str]]) -> torch.tensor:
         """
         take a mini-batch of source and target sentences, compute the log-likelihood of
         target sentences.
@@ -146,7 +146,7 @@ class NMT(object):
 
         return scores
 
-    def encode(self, src_sents: List[List[str]]) -> Tuple[Tensor, Any]:
+    def encode(self, src_sents: List[List[str]]) -> Tuple[torch.tensor, Any]:
         """
         Use a GRU/LSTM to encode source sentences into hidden states
 
@@ -176,7 +176,7 @@ class NMT(object):
         return e_hidden, decoder_init_state
         # end yingjinl
 
-    def decode(self, src_encodings: Tensor, decoder_init_state: Any, tgt_sents: List[List[str]]) -> Tensor:
+    def decode(self, src_encodings: torch.tensor, decoder_init_state: Any, tgt_sents: List[List[str]]) -> torch.tensor:
         """
         Given source encodings, compute the log-likelihood of predicting the gold-standard target
         sentence tokens
