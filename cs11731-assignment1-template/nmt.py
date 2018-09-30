@@ -54,7 +54,6 @@ from vocab import Vocab, VocabEntry
 import os
 import torch
 import torch.nn as nn
-import torch.autograd.Variable as Variable
 from torch import optim
 import torch.nn.functional as F
 from models import *
@@ -165,16 +164,15 @@ class NMT(object):
         _, src_embed = self.embed( src_sents )
         [ batch_size, sentence_len, embed_len ] = src_embed.size()
 
-        src_embed = src_embed.view( ( sentence_len, batch_size, embed_len ) )
-        src_var = Variable( src_embed )
-        src_var = src_var.cuda if USE_CUDA else src_var
+        src_var = src_embed.view( ( sentence_len, batch_size, embed_len ) )
+        if USE_CUDA: src_var = src_var.cuda()
 
         e_hidden = encoder.initial_hidden( batch_size )
         for e_i in range( sentence_len ):
             _, e_hidden = self.encoder( src_var[ e_i ], e_hidden, batch_size )
 
         _, e_0s = self.embed( [ [ '<s>' ] for i in range( batch_size ) ] )
-        decoder_init_state = Variable( torch.LongTensor( e_0s , device = DEVICE ) )
+        decoder_init_state = torch.tensor( e_0s )
         return e_hidden, decoder_init_state
         # end yingjinl
 
@@ -197,9 +195,8 @@ class NMT(object):
         true_indices, _ = self.embed( tgt_sents )
         [ batch_size, sentence_len ] = true_indices.size()
 
-        true_indices = true_indices.view( sentence_len, batch_size )
-        tar_var = Variable( true_indices )
-        tar_var = tar_var.cuda if USE_CUDA else tar_var
+        tar_var = true_indices.view( sentence_len, batch_size )
+        if USE_CUDA: tar_var.cuda()
 
         d_input = decoder_init_state
         d_hidden = src_encodings
@@ -207,7 +204,7 @@ class NMT(object):
             d_out, d_hidden = self.decoder( d_input, d_hidden, batch_size )
             # code taken from https://github.com/pengyuchen/PyTorch-Batch-Seq2seq/blob/master/seq2seq_translation_tutorial.py
             topv, topi = d_out.data.topk( 1, dim = 1 )
-            d_input = Variable( self.tar_embedder( topi ) )
+            d_input = self.tar_embedder( topi )
             if USE_CUDA: d_input = d_input.cuda()
             scores += self.loss( d_out, tar_var[ d_i, : ] )
         return scores
@@ -251,10 +248,10 @@ class NMT(object):
             print( "_type not implemented in self.embed()" )
 
         word_indices_list = vocab_entry.words2indices( sentence_list )
-        word_indices_list = self.pad_batch( word_indices_list )
+        word_indices_list = torch.LongTensor( self.pad_batch( word_indices_list ) )
         sentence_batch = embedder( word_indices_list )
 
-        word_indices_list = Variable( word_indices_list ).cuda() if USE_CUDA else Variable( word_indices_list )
+        if USE_CUDA: word_indices_list = word_indices_list.cuda()
         return word_indices_list, sentence_batch
 
 
