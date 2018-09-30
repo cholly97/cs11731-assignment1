@@ -162,7 +162,7 @@ class NMT(object):
         # begin yingjinl
 
         #( batch_size, sentence length, embed length )
-        _, src_embed = sef.embed( src_sents )
+        _, src_embed = self.embed( src_sents )
         [ batch_size, sentence_len, embed_len ] = src_embed.size()
 
         src_embed = src_embed.view( ( sentence_len, batch_size, embed_len ) )
@@ -173,7 +173,7 @@ class NMT(object):
         for e_i in range( sentence_len ):
             _, e_hidden = self.encoder( src_var[ e_i ], e_hidden, batch_size )
 
-        decoder_init_state = Variable( torch.LongTensor( [ self.embed( [ 1 ] ) for i in range batch_size ] , device = DEVICE ) )
+        decoder_init_state = Variable( torch.LongTensor( [ self.embed( [ 1 ] ) for i in range( batch_size ) ] , device = DEVICE ) )
         return e_hidden, decoder_init_state
         # end yingjinl
 
@@ -188,12 +188,12 @@ class NMT(object):
             tgt_sents: list of gold-standard target sentences, wrapped by `<s>` and `</s>`
 
         Returns:
-            scores: could be a variable of shape (batch_size, ) representing the 
+            scores: could be a variable of shape (batch_size, ) representing the
                 log-likelihood of generating the gold-standard target sentence for
                 each example in the input batch
         """
         scores = 0
-        true_indices, _ = sef.embed( tgt_sents )
+        true_indices, _ = self.embed( tgt_sents )
         [ batch_size, sentence_len ] = true_indices.size()
 
         true_indices = true_indices.view( sentence_len, batch_size )
@@ -212,7 +212,7 @@ class NMT(object):
     # begin yingjinl
     def pad_batch( self, indices_list ):
         """
-        
+
         Padd the input batch to make them equal to the length of the longest sentence
         Args:
             indices_list ( batch_size, sentence_len )
@@ -229,7 +229,7 @@ class NMT(object):
         padd sentence with padding if not at the same length
         Args:
             sentence: a batch of sentence: ( batch_size, sentence_len )
-                    [ 
+                    [
                         [ w1, w2, w3, ......wk ],
                         [ w1, w2, w3, ..... wk ]
                     ]
@@ -256,11 +256,11 @@ class NMT(object):
         return word_indices_list, sentence_batch
 
 
-    
+
 
     # end yingjinl
 
-    
+
     def RNN_e(m_t, h_t):
         pass # todo
 
@@ -292,7 +292,7 @@ class NMT(object):
             idx -= lens[ret]
             ret += 1
         return ret, idx
-    
+
     def beam_search(self, src_sent: List[str], beam_size: int=5, max_decoding_time_step: int=70) -> List[Hypothesis]:
         """
         Given a single source sentence, perform beam search
