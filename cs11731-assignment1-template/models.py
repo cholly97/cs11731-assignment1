@@ -1,3 +1,5 @@
+# pytorch construction structure borrow from 
+# https://pytorch.org/tutorials/beginner/nlp/word_embeddings_tutorial.html
 import unicodedata
 import string
 import re
@@ -52,43 +54,6 @@ class BaselineGRUDecoder( nn.Module ):
             output, hidden = self.decoder( output, hidden )
         output = self.softmax( self.out( output[ 0 ] ) )
         return output, hidden
-
-def train_one_iter( src_sentence_batch, tdt_sentence_batch, 
-	                encoder, decoder, 
-	                encoder_optim, decoder_optim,
-	                batch_size, embed_func, loss_func, max_len  ):
-    
-
-    src_embed =  embed_func( src_sentence_batch ) 
-    tar_embed =  embed_func( tdt_sentence_batch ) 
-    # ( sentence_len, batch_size, embed_len )
-    src_var = torch.autograd.Variable( embed_func( src_sentence_batch ) )
-    tar_var = torch.autograd.Variable( embed_func( tdt_sentence_batch ) )
-
-    src_len = src_var.size()[ -1 ]
-    tar_len = tar_var.size()[ -1 ]
-
-    loss = 0
-
-    encoder_optim.zero_grad()
-    decoder_optim.zero_grad()
-
-    e_hidden = encoder.initial_hidden()
-    for encoder_index in range( src_len ):
-        e_output, e_hidden = encoder( src_var, e_hidden )
-
-    d_var = torch.autograd.Variable( torch.LongTensor( [ SOS_embed ] * batch_size, device = DEVICE) )
-    d_hidden = e_hidden
-    d_output
-    for decoder_index in range( tar_len ):
-        d_output, d_hidden = decoder(  )
-
-
-
-    loss.backward()
-
-    encoder_optim.step()
-    decoder_optim.step()
 
 
 	

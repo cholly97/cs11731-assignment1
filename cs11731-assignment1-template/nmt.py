@@ -1,5 +1,5 @@
 # coding=utf-8
-
+# training architecture borrowed from https://github.com/pytorch/examples/blob/master/imagenet/main.py#L139
 """
 A very basic implementation of neural machine translation
 
@@ -62,7 +62,33 @@ from models import *
 
 Hypothesis = namedtuple('Hypothesis', ['value', 'score'])
 
+# begin yingjinl
+# class Hypothesis(object):
+#     def __init__(self, h_t, value = [ "<s>" ], score = 0.):
+#         self.h_t = h_t
+#         self.value = value
+#         self.score = score
+#         self.incomplete = self.value[-1] != '</s>'
 
+#     def is_incomplete( self ):
+#         return self.value[ -1 ] != "</s>"
+
+#     def is_completed(self):
+#         return self.value[ -1 ] == '</s>'
+
+#     def generate_candidates(self, decoder, decoder_input, decoder_hidden ):
+#         if self.incomplete:
+#             m_t = embed(self.value[-1])
+#             self.h_t = RNN_e(m_t, self.h_t)
+#             s_t = W_hs * self.h_t + b_s
+#             log_p_t = torch.nn.functional.log_softmax(s_t, dim = 0)
+#             return log_p_t + self.score
+#         return self.score
+
+#     def extend(e_t, score):
+#         return Hypothesis(self.h_t, self.value + [e_t], score)
+
+# end yingjinl
 class NMT(object):
 
     def __init__(self, embed_size, hidden_size, vocab, dropout_rate=0.2):
@@ -76,6 +102,9 @@ class NMT(object):
         # initialize neural network laBaselineGRUEncoderyers...
 
         # begin yingjinl
+        self.src_embedder = nn.Embedding( len( self.vocab.src.word2id ) , self.embed_size )
+        self.tar_embedder = nn.Embedding( len( self.vocab.tgt.word2id ) , self.embed_size )
+
         self.encoder = BaselineGRUEncoder( self.embed_size, self.hidden_size, 2 )
         self.decoder = BaselineGRUDecoder( self.embed_size, self.hidden_size, self.output_size, 2 )
         if USE_CUDA:
@@ -86,6 +115,9 @@ class NMT(object):
                                   lr=self.lr )
         self.decoder_optim = optim.SGD( filter( lambda x: x.requires_grad, self.decoder.parameters() ),
                                   lr=self.lr )
+        if USE_CUDA:
+            self.encoder_optim.cuda()
+            self.decoder_optim.cuda()
         self.loss = nn.NLLLoss()
         # end yingjinl
 
@@ -130,10 +162,10 @@ class NMT(object):
         # begin yingjinl
 
         #( batch_size, sentence length, embed length )
-        src_embed = sef.embed( src_sents )
-        [ batch_size, sentence_len, embed_len ] = src_embed.shape
+        _, src_embed = sef.embed( src_sents )
+        [ batch_size, sentence_len, embed_len ] = src_embed.size()
 
-        src_embed = src_embed.reshape( ( sentence_len, batch_size, embed_len ) )
+        src_embed = src_embed.view( ( sentence_len, batch_size, embed_len ) )
         src_var = Variable( src_embed )
         src_var = src_var.cuda if USE_CUDA else src_var
 
@@ -141,7 +173,7 @@ class NMT(object):
         for e_i in range( sentence_len ):
             _, e_hidden = self.encoder( src_var[ e_i ], e_hidden, batch_size )
 
-        decoder_init_state = Variable( torch.LongTensor( [ SOS_embed ] * batch_size, device = DEVICE) )
+        decoder_init_state = Variable( torch.LongTensor( [ self.embed( [ 1 ] ) for i in range batch_size ] , device = DEVICE ) )
         return e_hidden, decoder_init_state
         # end yingjinl
 
@@ -161,31 +193,74 @@ class NMT(object):
                 each example in the input batch
         """
         scores = 0
-        tar_embed = sef.embed( tgt_sents )
-        [ batch_size, sentence_len, embed_len ] = tar_embed.shape
+        true_indices, _ = sef.embed( tgt_sents )
+        [ batch_size, sentence_len ] = true_indices.size()
 
-        tar_embed = tar_embed.reshape( sentence_len, batch_size, embed_len  )
-        tar_var = Variable( tar_embed )
+        true_indices = true_indices.view( sentence_len, batch_size )
+        tar_var = Variable( true_indices )
         tar_var = tar_var.cuda if USE_CUDA else tar_var
 
         d_input = decoder_init_state
         d_hidden = src_encodings
         for d_i in range( sentence_len ):
             d_out, d_hidden = self.decoder( d_input, d_hidden, batch_size )
+            # code taken from https://github.com/pengyuchen/PyTorch-Batch-Seq2seq/blob/master/seq2seq_translation_tutorial.py
             topv, topi = d_input.data.topk( 1 )
             d_input = Variable( torch.cat( topi ) ).cuda() if USE_CUDA else Variable( torch.cat( topi ) )
-
             scores += self.loss( d_out, tar_var[ d_i, : ] )
-
         return scores
+    # begin yingjinl
+    def pad_batch( self, indices_list ):
+        """
+        
+        Padd the input batch to make them equal to the length of the longest sentence
+        Args:
+            indices_list ( batch_size, sentence_len )
+        """
+        longest_len = max( map( max, indices_list ) )
+        for i in range( len( indices_list ) ):
+            indices_list[ i ] += self.vocab.src.word2id[ "<pad>" ] * ( longest_len - len( indices_list[ i ] ) )
+        return indices_list
 
-    # returns ndarray of shape ( batch_size, sentence length, embed length )
-    # padd to the longest if sentences are not equal in length
-    def embed(self, words):
-        if type(words) == 'list':
-            return [embed(word) for word in words]
-        return word # todo
+    def embed( self, sentence_list, _type = "src" ):
+        """
+        Convert an array of sentence into an np array of word indices
+        Then perform embedding on those indices according to a embed function
+        padd sentence with padding if not at the same length
+        Args:
+            sentence: a batch of sentence: ( batch_size, sentence_len )
+                    [ 
+                        [ w1, w2, w3, ......wk ],
+                        [ w1, w2, w3, ..... wk ]
+                    ]
+            type: src embedding ot tar embedding
 
+        Returns:
+            sentence_batch:  a tensor of sentence with embeddings
+                            shape ( batch_size, sentence len, embedding_len )
+        """
+        if _type == "src":
+            vocab_entry = self.vocab.src
+            word_indices_list = vocab_entry.words2indices( sentence_list )
+            word_indices_list = self.pad_batch( word_indices_list )
+            sentence_batch = self.src_embedder( word_indices_list )
+
+        elif _type == "tar":
+            vocab_entry = self.vocab.tgt
+            word_indices_list = vocab_entry.words2indices( sentence_list )
+            word_indices_list = self.pad_batch( word_indices_list )
+            sentence_batch = self.tar_embedder( word_indices_list )
+        else:
+            print( "_type not implemented in self.embed()" )
+        word_indices_list = Variable( word_indices_list ).cuda() if USE_CUDA else Variable( word_indices_list )
+        return word_indices_list, sentence_batch
+
+
+    
+
+    # end yingjinl
+
+    
     def RNN_e(m_t, h_t):
         pass # todo
 
@@ -217,7 +292,7 @@ class NMT(object):
             idx -= lens[ret]
             ret += 1
         return ret, idx
-
+    
     def beam_search(self, src_sent: List[str], beam_size: int=5, max_decoding_time_step: int=70) -> List[Hypothesis]:
         """
         Given a single source sentence, perform beam search
@@ -232,7 +307,15 @@ class NMT(object):
                 value: List[str]: the decoded target sentence, represented as a list of words
                 score: float: the log-likelihood of the target sentence
         """
+        # begin yingjinl
+        # src_encodings, decoder_init_state = self.encode( [ src_sent ] )
+        # step = 0
+        # # initialize pypothesis with its vaues holding start of string tag
+        # hypo_list = [ Hypothesis( decoder_init_state ) for i in range( beam_size ) ]
+        # while( step < max_decoding_time_step ):
+        #     step += 1
 
+        # end yingjinl
         src_encodings, decoder_init_state = encode([src_sent])
 
         time = 0
@@ -250,9 +333,9 @@ class NMT(object):
                 hypothesis = hypotheses[hyp_idx]
                 new_hypotheses.append(
                     hypothesis.incomplete
-                    ? hypothesis.extend(
+                    if hypothesis.extend(
                         vocab.tgt.id2word[word_idx], float(scores[index]))
-                    : hypothesis)
+                    else hypothesis)
 
             hypotheses = new_hypotheses
             if sum(hypothesis.incomplete for hypothesis in hypotheses) == 0:
