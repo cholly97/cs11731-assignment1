@@ -61,33 +61,6 @@ from models import *
 
 Hypothesis = namedtuple('Hypothesis', ['value', 'score'])
 
-# begin yingjinl
-# class Hypothesis(object):
-#     def __init__(self, h_t, value = [ "<s>" ], score = 0.):
-#         self.h_t = h_t
-#         self.value = value
-#         self.score = score
-#         self.incomplete = self.value[-1] != '</s>'
-
-#     def is_incomplete( self ):
-#         return self.value[ -1 ] != "</s>"
-
-#     def is_completed(self):
-#         return self.value[ -1 ] == '</s>'
-
-#     def generate_candidates(self, decoder, decoder_input, decoder_hidden ):
-#         if self.incomplete:
-#             m_t = embed(self.value[-1])
-#             self.h_t = RNN_e(m_t, self.h_t)
-#             s_t = W_hs * self.h_t + b_s
-#             log_p_t = torch.nn.functional.log_softmax(s_t, dim = 0)
-#             return log_p_t + self.score
-#         return self.score
-
-#     def extend(e_t, score):
-#         return Hypothesis(self.h_t, self.value + [e_t], score)
-
-# end yingjinl
 class NMT(object):
 
     def __init__(self, embed_size, hidden_size, vocab, dropout_rate=0.2):
@@ -105,7 +78,7 @@ class NMT(object):
         self.tar_embedder = nn.Embedding( len( self.vocab.tgt.word2id ) , self.embed_size )
 
         self.encoder = BaselineGRUEncoder( self.embed_size, self.hidden_size, 2 )
-        self.decoder = BaselineGRUDecoder( self.embed_size, self.hidden_size, self.output_size, 2 )
+        self.decoder = BaselineGRUDecoder( self.embed_size, self.hidden_size, self.embed_size, 2 )
         if USE_CUDA:
             self.encoder.cuda()
             self.decoder.cuda()
@@ -114,28 +87,32 @@ class NMT(object):
                                   lr=self.lr )
         self.decoder_optim = optim.SGD( filter( lambda x: x.requires_grad, self.decoder.parameters() ),
                                   lr=self.lr )
-        if USE_CUDA:
-            self.encoder_optim.cuda()
-            self.decoder_optim.cuda()
+        # if USE_CUDA:
+        #     self.encoder_optim.cuda()
+        #     self.decoder_optim.cuda()
         self.loss = nn.NLLLoss()
         # end yingjinl
 
 
+<<<<<<< HEAD
     def __call__(self, src_sents: List[List[str]], tgt_sents: List[List[str]]) -> torch.tensor:
+=======
+    def __call__( self, src_sents , tgt_sents ):
+>>>>>>> 6c03763bcd43969a6dc23b49a66e64e2df7920b2
         """
         take a mini-batch of source and target sentences, compute the log-likelihood of
         target sentences.
 
         Args:
-            src_sents: list of source sentence tokens
-            tgt_sents: list of target sentence tokens, wrapped by `<s>` and `</s>`
+            src_sents: list of source sentence tokens  List[List[str]]
+            tgt_sents: list of target sentence tokens, wrapped by `<s>` and `</s>`  List[List[str]]
 
         Returns:
             scores: a variable/tensor of shape (batch_size, ) representing the
                 log-likelihood of generating the gold-standard target sentence for
                 each example in the input batch
         """
-        src_encodings, decoder_init_state = self.encode(src_sents, tgt_sents)
+        src_encodings, decoder_init_state = self.encode( src_sents )
         scores = self.decode(src_encodings, decoder_init_state, tgt_sents)
 
         # begin yingjinl
@@ -146,14 +123,18 @@ class NMT(object):
 
         return scores
 
+<<<<<<< HEAD
     def encode(self, src_sents: List[List[str]]) -> Tuple[torch.tensor, Any]:
+=======
+    def encode( self, src_sents ):
+>>>>>>> 6c03763bcd43969a6dc23b49a66e64e2df7920b2
         """
         Use a GRU/LSTM to encode source sentences into hidden states
 
         Args:
-            src_sents: list of source sentence tokens
+            src_sents: list of source sentence tokens s: List[List[str]]
 
-        Returns:
+        Returns: > Tuple[Tensor, Any]
             src_encodings: hidden states of tokens in source sentences, this could be a variable
                 with shape (batch_size, source_sentence_length, encoding_dim), or in orther formats
             decoder_init_state: decoder GRU/LSTM's initial state, computed from source encodings
@@ -167,16 +148,20 @@ class NMT(object):
         src_var = src_embed.view( ( sentence_len, batch_size, embed_len ) )
         if USE_CUDA: src_var = src_var.cuda()
 
-        e_hidden = encoder.initial_hidden( batch_size )
+        e_hidden = self.encoder.initial_hidden( batch_size )
         for e_i in range( sentence_len ):
-            _, e_hidden = self.encoder( src_var[ e_i ], e_hidden, batch_size )
+            _, e_hidden = self.encoder.forward( src_var[ e_i ], e_hidden, batch_size )
 
         _, e_0s = self.embed( [ [ '<s>' ] for i in range( batch_size ) ] )
         decoder_init_state = torch.tensor( e_0s )
         return e_hidden, decoder_init_state
         # end yingjinl
 
+<<<<<<< HEAD
     def decode(self, src_encodings: torch.tensor, decoder_init_state: Any, tgt_sents: List[List[str]]) -> torch.tensor:
+=======
+    def decode(self, src_encodings, decoder_init_state, tgt_sents):
+>>>>>>> 6c03763bcd43969a6dc23b49a66e64e2df7920b2
         """
         Given source encodings, compute the log-likelihood of predicting the gold-standard target
         sentence tokens
@@ -201,7 +186,7 @@ class NMT(object):
         d_input = decoder_init_state
         d_hidden = src_encodings
         for d_i in range( sentence_len ):
-            d_out, d_hidden = self.decoder( d_input, d_hidden, batch_size )
+            d_out, d_hidden = self.decoder.forward( d_input, d_hidden, batch_size )
             # code taken from https://github.com/pengyuchen/PyTorch-Batch-Seq2seq/blob/master/seq2seq_translation_tutorial.py
             topv, topi = d_out.data.topk( 1, dim = 1 )
             d_input = self.tar_embedder( topi )
@@ -218,7 +203,7 @@ class NMT(object):
         """
         longest_len = max( map( max, indices_list ) )
         for i in range( len( indices_list ) ):
-            indices_list[ i ] += self.vocab.src.word2id[ "<pad>" ] * ( longest_len - len( indices_list[ i ] ) )
+            indices_list[ i ] += [ self.vocab.src.word2id[ "<pad>" ] ] * ( longest_len - len( indices_list[ i ] ) )
         return indices_list
 
     def embed( self, sentence_list, _type = "src" ):
@@ -284,29 +269,21 @@ class NMT(object):
             ret += 1
         return ret, idx
 
-    def beam_search(self, src_sent: List[str], beam_size: int=5, max_decoding_time_step: int=70) -> List[Hypothesis]:
+    def beam_search(self, src_sent, beam_size: int=5, max_decoding_time_step: int=70):
         """
         Given a single source sentence, perform beam search
 
         Args:
-            src_sent: a single tokenized source sentence
+            src_sent: a single tokenized source sentence : List[str]
             beam_size: beam size
             max_decoding_time_step: maximum number of time steps to unroll the decoding RNN
 
-        Returns:
+        Returns: -> List[Hypothesis]
             hypotheses: a list of hypothesis, each hypothesis has two fields:
                 value: List[str]: the decoded target sentence, represented as a list of words
                 score: float: the log-likelihood of the target sentence
         """
-        # begin yingjinl
-        # src_encodings, decoder_init_state = self.encode( [ src_sent ] )
-        # step = 0
-        # # initialize pypothesis with its vaues holding start of string tag
-        # hypo_list = [ Hypothesis( decoder_init_state ) for i in range( beam_size ) ]
-        # while( step < max_decoding_time_step ):
-        #     step += 1
 
-        # end yingjinl
         src_encodings, decoder_init_state = encode([src_sent])
 
         time = 0
@@ -334,12 +311,12 @@ class NMT(object):
 
         return hypotheses
 
-    def evaluate_ppl(self, dev_data: List[Any], batch_size: int=32):
+    def evaluate_ppl(self, dev_data, batch_size: int=32):
         """
         Evaluate perplexity on dev sentences
 
         Args:
-            dev_data: a list of dev sentences
+            dev_data: a list of dev sentences : List[Any]
             batch_size: batch size
 
         Returns:
@@ -451,6 +428,7 @@ def train(args: Dict[str, str]):
 
         for src_sents, tgt_sents in batch_iter(train_data, batch_size=train_batch_size, shuffle=True):
             train_iter += 1
+            print( "train iter:{}".format( train_iter ) )
 
             batch_size = len(src_sents)
 
@@ -561,8 +539,10 @@ def decode(args: Dict[str, str]):
     if args['TEST_TARGET_FILE']:
         test_data_tgt = read_corpus(args['TEST_TARGET_FILE'], source='tgt')
 
-    print(f"load model from {args['MODEL_PATH']}", file=sys.stderr)
-    model = NMT.load(args['MODEL_PATH'])
+    # begin yingjinl
+    print( "load model from {}".format( args[ 'MODEL_PATH' ] ) , file=sys.stderr )
+    #end yingjinl change the wierd string formatting
+    model = NMT.load( args['MODEL_PATH'] )
 
     hypotheses = beam_search(model, test_data_src,
                              beam_size=int(args['--beam-size']),
@@ -571,7 +551,9 @@ def decode(args: Dict[str, str]):
     if args['TEST_TARGET_FILE']:
         top_hypotheses = [hyps[0] for hyps in hypotheses]
         bleu_score = compute_corpus_level_bleu_score(test_data_tgt, top_hypotheses)
-        print(f'Corpus BLEU: {bleu_score}', file=sys.stderr)
+        # begin yingjinl
+        print( 'Corpus BLEU: {}'.format( bleu_score ), file=sys.stderr)
+        # end yingjinl
 
     with open(args['OUTPUT_FILE'], 'w') as f:
         for src_sent, hyps in zip(test_data_src, hypotheses):
@@ -593,7 +575,10 @@ def main():
     elif args['decode']:
         decode(args)
     else:
-        raise RuntimeError(f'invalid mode')
+        # yingjinl
+        # raise RuntimeError(f'invalid mode')
+        raise RuntimeError('invalid mode')
+        # end yingjinl
 
 
 if __name__ == '__main__':
