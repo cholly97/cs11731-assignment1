@@ -94,11 +94,7 @@ class NMT(object):
         # end yingjinl
 
 
-<<<<<<< HEAD
-    def __call__(self, src_sents: List[List[str]], tgt_sents: List[List[str]]) -> torch.tensor:
-=======
     def __call__( self, src_sents , tgt_sents ):
->>>>>>> 6c03763bcd43969a6dc23b49a66e64e2df7920b2
         """
         take a mini-batch of source and target sentences, compute the log-likelihood of
         target sentences.
@@ -123,11 +119,7 @@ class NMT(object):
 
         return scores
 
-<<<<<<< HEAD
-    def encode(self, src_sents: List[List[str]]) -> Tuple[torch.tensor, Any]:
-=======
     def encode( self, src_sents ):
->>>>>>> 6c03763bcd43969a6dc23b49a66e64e2df7920b2
         """
         Use a GRU/LSTM to encode source sentences into hidden states
 
@@ -157,11 +149,7 @@ class NMT(object):
         return e_hidden, decoder_init_state
         # end yingjinl
 
-<<<<<<< HEAD
-    def decode(self, src_encodings: torch.tensor, decoder_init_state: Any, tgt_sents: List[List[str]]) -> torch.tensor:
-=======
     def decode(self, src_encodings, decoder_init_state, tgt_sents):
->>>>>>> 6c03763bcd43969a6dc23b49a66e64e2df7920b2
         """
         Given source encodings, compute the log-likelihood of predicting the gold-standard target
         sentence tokens
