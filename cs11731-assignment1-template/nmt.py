@@ -237,7 +237,7 @@ class NMT(object):
 
 
 
-
+    # this is a test comment
     # end yingjinl
 
     class Hypothesis(object):
