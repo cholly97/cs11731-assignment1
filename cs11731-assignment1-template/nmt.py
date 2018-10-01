@@ -144,7 +144,6 @@ class NMT(object):
 
         _, e_0s = self.embed( [ [ '<s>' ] for i in range( batch_size ) ] )
         decoder_init_state = torch.tensor( e_0s )
-        print( "Exit encoding" )
         return e_hidden, decoder_init_state
         # end yingjinl
 
