@@ -33,5 +33,5 @@ For training and decoding/testing, you may refer to `data/train.sh`. Note that i
 
 ## Testing nmt.py alone for training use the folowwing command
 ```[bash]
-python nmt.py train --train-src "data/train.de-en.de.wmixerprep" --train-tgt "data/train.de-en.en.wmixerprep" --dev-src "data/valid.de-en.de" --dev-tgt "data/valid.de-en.en" --vocab "data/vocab.bin" --save-to "work_dir/model.bin" --valid-niter 1000 --batch-size 64 --hidden-size 256 --embed-size 256 --uniform-init 0.1 --dropout 0.2 --clip-grad 5.0 --lr-decay 0.5
+python nmt.py train --train-src "data/train.de-en.de.wmixerprep" --train-tgt "data/train.de-en.en.wmixerprep" --dev-src "data/valid.de-en.de" --dev-tgt "data/valid.de-en.en" --vocab "data/vocab.bin" --save-to "work_dir/model.bin" --valid-niter 1000 --batch-size 64 --hidden-size 256 --embed-size 256 --uniform-init 0.1 --dropout 0.2 --clip-grad 5.0 --lr 0.0001 --lr-decay 0.5
 ```

@@ -135,22 +135,16 @@ class NMT(object):
         #( batch_size, sentence length, embed length )
         _, src_embed = self.embed( src_sents )
         [ batch_size, sentence_len, embed_len ] = src_embed.size()
-        # print( "src_embed.size: {}".format( src_embed.size() ) )
 
         src_var = src_embed.view( ( sentence_len, batch_size, embed_len ) )
-        # print("src var size: {}".format(src_var.size() ) ) 
         if USE_CUDA: src_var = src_var.cuda()
-        # print("src var size: {}".format(src_var.size() ) ) 
-        # exit()
         e_hidden = self.encoder.initial_hidden( batch_size )
         for e_i in range( sentence_len ):
             _, e_hidden = self.encoder( src_var[ e_i ], e_hidden, batch_size )
-            # print( "e_hidden_size: {}".format( e_hidden.size() ) )
 
         _, e_0s = self.embed( [ [ '<s>' ] for i in range( batch_size ) ] )
         decoder_init_state = torch.tensor( e_0s )
-        # print( "Exit encoding" )
-        time.sleep(100)
+        print( "Exit encoding" )
         return e_hidden, decoder_init_state
         # end yingjinl
 
@@ -176,13 +170,14 @@ class NMT(object):
         tar_var = true_indices.view( sentence_len, batch_size )
         if USE_CUDA: tar_var.cuda()
 
-        d_input = decoder_init_state
+        d_input = decoder_init_state.cuda() if USE_CUDA else decoder_init_state
         d_hidden = src_encodings
         for d_i in range( sentence_len ):
             d_out, d_hidden = self.decoder( d_input, d_hidden, batch_size )
             # code taken from https://github.com/pengyuchen/PyTorch-Batch-Seq2seq/blob/master/seq2seq_translation_tutorial.py
             topv, topi = d_out.data.topk( 1, dim = 1 )
-            d_input = self.tar_embedder( topi )
+            # Cast from torch.cuda.LongTensor to regular Long tensor
+            d_input = self.tar_embedder( topi.type( torch.LongTensor ) )
             if USE_CUDA: d_input = d_input.cuda()
             scores += self.loss( d_out, tar_var[ d_i, : ] )
         return scores
@@ -227,9 +222,7 @@ class NMT(object):
 
 
         word_indices_list = vocab_entry.words2indices( sentence_list )
-        # print("word idices list before pad {}".format( (len(word_indices_list), len(word_indices_list[0]) ) ) )
         word_indices_list = torch.LongTensor( self.pad_batch( word_indices_list ) )
-        # print("word idices list after pad {}".format(word_indices_list.size() ) )
         sentence_batch = embedder( word_indices_list )
 
         if USE_CUDA: word_indices_list = word_indices_list.cuda()
@@ -307,7 +300,7 @@ class NMT(object):
 
         return hypotheses
 
-    def evaluate_ppl(self, dev_data, batch_size: int=32):
+    def evaluate_ppl(self, dev_data, model, batch_size: int=32):
         """
         Evaluate perplexity on dev sentences
 
@@ -325,11 +318,11 @@ class NMT(object):
         # you may want to wrap the following code using a context manager provided
         # by the NN library to signal the backend to not to keep gradient information
         # e.g., `torch.no_grad()`
-
+        # with torch.no_grad():
         for src_sents, tgt_sents in batch_iter(dev_data, batch_size):
             loss = -model(src_sents, tgt_sents).sum()
 
-            cum_loss += loss
+            cum_loss += loss.item()
             tgt_word_num_to_predict = sum(len(s[1:]) for s in tgt_sents)  # omitting the leading `<s>`
             cum_tgt_words += tgt_word_num_to_predict
 
@@ -404,6 +397,7 @@ def train(args: Dict[str, str]):
     valid_niter = int(args['--valid-niter'])
     log_every = int(args['--log-every'])
     model_save_path = args['--save-to']
+    lr = args['--lr']
 
     vocab = pickle.load(open(args['--vocab'], 'rb'))
 
@@ -429,7 +423,7 @@ def train(args: Dict[str, str]):
             batch_size = len(src_sents)
 
             # (batch_size)
-            loss = -model(src_sents, tgt_sents)
+            loss = -model(src_sents, tgt_sents).item()
 
             report_loss += loss
             cum_loss += loss
@@ -470,7 +464,7 @@ def train(args: Dict[str, str]):
                 print('begin validation ...', file=sys.stderr)
 
                 # compute dev. ppl and bleu
-                dev_ppl = model.evaluate_ppl(dev_data, batch_size=128)   # dev batch size can be a bit larger
+                dev_ppl = model.evaluate_ppl(dev_data, model, batch_size=128)   # dev batch size can be a bit larger
                 valid_metric = -dev_ppl
 
                 print('validation: iter %d, dev. ppl %f' % (train_iter, dev_ppl), file=sys.stderr)
