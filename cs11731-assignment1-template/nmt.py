@@ -79,9 +79,8 @@ class NMT(object):
 
         self.encoder = BaselineGRUEncoder( self.embed_size, self.hidden_size, 2 )
         self.decoder = BaselineGRUDecoder( self.embed_size, self.hidden_size, self.embed_size, 2 )
-        if USE_CUDA:
-            self.encoder.cuda()
-            self.decoder.cuda()
+        self.encoder.to( DEVICE )
+        self.decoder.to( DEVICE )
         self.lr = 1e-4
         self.encoder_optim = optim.SGD( filter( lambda x: x.requires_grad, self.encoder.parameters() ),
                                   lr=self.lr )
@@ -136,16 +135,22 @@ class NMT(object):
         #( batch_size, sentence length, embed length )
         _, src_embed = self.embed( src_sents )
         [ batch_size, sentence_len, embed_len ] = src_embed.size()
+        # print( "src_embed.size: {}".format( src_embed.size() ) )
 
         src_var = src_embed.view( ( sentence_len, batch_size, embed_len ) )
+        # print("src var size: {}".format(src_var.size() ) ) 
         if USE_CUDA: src_var = src_var.cuda()
-
+        # print("src var size: {}".format(src_var.size() ) ) 
+        # exit()
         e_hidden = self.encoder.initial_hidden( batch_size )
         for e_i in range( sentence_len ):
-            _, e_hidden = self.encoder.forward( src_var[ e_i ], e_hidden, batch_size )
+            _, e_hidden = self.encoder( src_var[ e_i ], e_hidden, batch_size )
+            # print( "e_hidden_size: {}".format( e_hidden.size() ) )
 
         _, e_0s = self.embed( [ [ '<s>' ] for i in range( batch_size ) ] )
         decoder_init_state = torch.tensor( e_0s )
+        # print( "Exit encoding" )
+        time.sleep(100)
         return e_hidden, decoder_init_state
         # end yingjinl
 
@@ -174,7 +179,7 @@ class NMT(object):
         d_input = decoder_init_state
         d_hidden = src_encodings
         for d_i in range( sentence_len ):
-            d_out, d_hidden = self.decoder.forward( d_input, d_hidden, batch_size )
+            d_out, d_hidden = self.decoder( d_input, d_hidden, batch_size )
             # code taken from https://github.com/pengyuchen/PyTorch-Batch-Seq2seq/blob/master/seq2seq_translation_tutorial.py
             topv, topi = d_out.data.topk( 1, dim = 1 )
             d_input = self.tar_embedder( topi )
@@ -189,7 +194,7 @@ class NMT(object):
         Args:
             indices_list ( batch_size, sentence_len )
         """
-        longest_len = max( map( max, indices_list ) )
+        longest_len = max( map( len, indices_list ) )
         for i in range( len( indices_list ) ):
             indices_list[ i ] += [ self.vocab.src.word2id[ "<pad>" ] ] * ( longest_len - len( indices_list[ i ] ) )
         return indices_list
@@ -220,8 +225,11 @@ class NMT(object):
         else:
             print( "_type not implemented in self.embed()" )
 
+
         word_indices_list = vocab_entry.words2indices( sentence_list )
+        # print("word idices list before pad {}".format( (len(word_indices_list), len(word_indices_list[0]) ) ) )
         word_indices_list = torch.LongTensor( self.pad_batch( word_indices_list ) )
+        # print("word idices list after pad {}".format(word_indices_list.size() ) )
         sentence_batch = embedder( word_indices_list )
 
         if USE_CUDA: word_indices_list = word_indices_list.cuda()

@@ -25,6 +25,7 @@ class BaselineGRUEncoder( nn.Module ):
 
     def initial_hidden( self, batch_size ):
         # treat initial state as variable that can be trained
+        # initial_state = torch.autograd.Variable( torch.zeros( 1, batch_size, self.hidden_size, device=DEVICE ) )
         initial_state = torch.autograd.Variable( torch.zeros( 1, batch_size, self.hidden_size, device=DEVICE ) )
         return initial_state
 
@@ -33,7 +34,8 @@ class BaselineGRUEncoder( nn.Module ):
         output = embedded_input
         for l in range( self.num_layer ):
             output, hidden = self.encoder( output, hidden )
-            print( "Finish Encoder Layer {}".format( l ) )
+            # print( "Finish Encoder Layer {}".format( l ) )
+            # print( "Output size: {} hidden size: {}".format( output.size(), hidden.size() ) )
         return output, hidden
 
 class BaselineGRUDecoder( nn.Module ):
