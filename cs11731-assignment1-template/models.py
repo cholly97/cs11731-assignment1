@@ -31,15 +31,15 @@ class BaselineGRUEncoder( nn.Module ):
     def forward( self, embedded_input, hidden, batch_size ):
         embedded_input = embedded_input.view( 1, batch_size, self.input_size )
         output = embedded_input
-        for _ in range( self.num_layer ):
+        for l in range( self.num_layer ):
             output, hidden = self.encoder( output, hidden )
+            print( "Finish Encoder Layer {}".format( l ) )
         return output, hidden
 
 class BaselineGRUDecoder( nn.Module ):
     def __init__( self, input_size, hidden_size, output_size, num_layer ):
         super( BaselineGRUDecoder, self ).__init__()
         self.input_size = input_size
-        self.embedding = embedding_func
         self.num_layer = num_layer
         self.decoder = nn.GRU( input_size, hidden_size )
         self.out = nn.Linear( hidden_size, output_size )
@@ -47,7 +47,7 @@ class BaselineGRUDecoder( nn.Module ):
 
     # decoder's input should start from the SOS token 
     def forward( self, embedded_input, hidden, batch_size ):
-    	embedded_input = embedded_input.view( 1, batch_size, self.input_size )
+        embedded_input = embedded_input.view( 1, batch_size, self.input_size )
         output = embedded_input
         for _ in range( self.num_layer ):
             output = F.relu( output )
