@@ -1,4 +1,4 @@
-# pytorch construction structure borrow from 
+# pytorch construction structure borrow from
 # https://pytorch.org/tutorials/beginner/nlp/word_embeddings_tutorial.html
 import unicodedata
 import string
@@ -47,7 +47,7 @@ class BaselineGRUDecoder( nn.Module ):
         self.out = nn.Linear( hidden_size, output_size )
         self.softmax = nn.LogSoftmax( dim=1 )
 
-    # decoder's input should start from the SOS token 
+    # decoder's input should start from the SOS token
     def forward( self, embedded_input, hidden, batch_size ):
         embedded_input = embedded_input.view( 1, batch_size, self.input_size )
         output = embedded_input
@@ -56,6 +56,3 @@ class BaselineGRUDecoder( nn.Module ):
             output, hidden = self.decoder( output, hidden )
         output = self.softmax( self.out( output[ 0 ] ) )
         return output, hidden
-
-
-	

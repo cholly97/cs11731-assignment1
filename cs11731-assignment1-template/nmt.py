@@ -42,7 +42,7 @@ import time
 from collections import namedtuple
 
 import numpy as np
-from typing import List, Tuple, Dict, Set, Union
+from typing import List, Tuple, Dict, Set, Union, Any
 from docopt import docopt
 from tqdm import tqdm
 from nltk.translate.bleu_score import corpus_bleu, sentence_bleu, SmoothingFunction
@@ -253,7 +253,7 @@ class NMT(object):
         def generate_candidates(self, model):
             if self.incomplete:
                 d_input = [model.embed(self.value[-1:])]
-                d_out, self.d_hidden = model.decoder(d_input, self.d_hidden, 1)
+                d_out, self.d_hidden = model.decoder.forward(d_input, self.d_hidden, 1)
                 scores = torch.nn.functional.log_softmax(d_out, dim = 0)
                 return scores + self.score
             return self.score
