@@ -245,7 +245,7 @@ class NMT(object):
         def generate_candidates(self, model):
             if self.incomplete:
                 d_input = [model.embed(self.value[-1:])]
-                d_out, self.d_hidden = model.decoder(d_input, self.d_hidden, 1)
+                d_out, self.d_hidden = model.decoder.forward(d_input, self.d_hidden, 1)
                 scores = torch.nn.functional.log_softmax(d_out, dim = 0)
                 return scores + self.score
             return self.score
