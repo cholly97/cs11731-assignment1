@@ -61,33 +61,6 @@ from models import *
 
 Hypothesis = namedtuple('Hypothesis', ['value', 'score'])
 
-# begin yingjinl
-# class Hypothesis(object):
-#     def __init__(self, h_t, value = [ "<s>" ], score = 0.):
-#         self.h_t = h_t
-#         self.value = value
-#         self.score = score
-#         self.incomplete = self.value[-1] != '</s>'
-
-#     def is_incomplete( self ):
-#         return self.value[ -1 ] != "</s>"
-
-#     def is_completed(self):
-#         return self.value[ -1 ] == '</s>'
-
-#     def generate_candidates(self, decoder, decoder_input, decoder_hidden ):
-#         if self.incomplete:
-#             m_t = embed(self.value[-1])
-#             self.h_t = RNN_e(m_t, self.h_t)
-#             s_t = W_hs * self.h_t + b_s
-#             log_p_t = torch.nn.functional.log_softmax(s_t, dim = 0)
-#             return log_p_t + self.score
-#         return self.score
-
-#     def extend(e_t, score):
-#         return Hypothesis(self.h_t, self.value + [e_t], score)
-
-# end yingjinl
 class NMT(object):
 
     def __init__(self, embed_size, hidden_size, vocab, dropout_rate=0.2):
@@ -298,15 +271,7 @@ class NMT(object):
                 value: List[str]: the decoded target sentence, represented as a list of words
                 score: float: the log-likelihood of the target sentence
         """
-        # begin yingjinl
-        # src_encodings, decoder_init_state = self.encode( [ src_sent ] )
-        # step = 0
-        # # initialize pypothesis with its vaues holding start of string tag
-        # hypo_list = [ Hypothesis( decoder_init_state ) for i in range( beam_size ) ]
-        # while( step < max_decoding_time_step ):
-        #     step += 1
 
-        # end yingjinl
         src_encodings, decoder_init_state = encode([src_sent])
 
         time = 0
@@ -561,8 +526,10 @@ def decode(args: Dict[str, str]):
     if args['TEST_TARGET_FILE']:
         test_data_tgt = read_corpus(args['TEST_TARGET_FILE'], source='tgt')
 
-    print(f"load model from {args['MODEL_PATH']}", file=sys.stderr)
-    model = NMT.load(args['MODEL_PATH'])
+    # begin yingjinl
+    print( "load model from {}".format( args[ 'MODEL_PATH' ] ) , file=sys.stderr )
+    #end yingjinl change the wierd string formatting
+    model = NMT.load( args['MODEL_PATH'] )
 
     hypotheses = beam_search(model, test_data_src,
                              beam_size=int(args['--beam-size']),
@@ -571,7 +538,9 @@ def decode(args: Dict[str, str]):
     if args['TEST_TARGET_FILE']:
         top_hypotheses = [hyps[0] for hyps in hypotheses]
         bleu_score = compute_corpus_level_bleu_score(test_data_tgt, top_hypotheses)
-        print(f'Corpus BLEU: {bleu_score}', file=sys.stderr)
+        # begin yingjinl
+        print( 'Corpus BLEU: {}'.format( bleu_score ), file=sys.stderr)
+        # end yingjinl
 
     with open(args['OUTPUT_FILE'], 'w') as f:
         for src_sent, hyps in zip(test_data_src, hypotheses):
@@ -593,7 +562,10 @@ def main():
     elif args['decode']:
         decode(args)
     else:
-        raise RuntimeError(f'invalid mode')
+        # yingjinl
+        # raise RuntimeError(f'invalid mode')
+        raise RuntimeError('invalid mode')
+        # end yingjinl
 
 
 if __name__ == '__main__':
