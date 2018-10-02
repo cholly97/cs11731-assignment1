@@ -52,7 +52,54 @@ class BaselineGRUDecoder( nn.Module ):
         embedded_input = embedded_input.view( 1, batch_size, self.input_size )
         output = embedded_input
         for _ in range( self.num_layer ):
-            output = F.relu( output )
+            # output = F.relu( output )
             output, hidden = self.decoder( output, hidden )
+        output = self.softmax( self.out( output[ 0 ] ) )
+        return output, hidden
+
+class BaselineLSTMEncoder( nn.Module ):
+
+    def __init__( self, input_size, hidden_size, num_layer ):
+        super( BaselineLSTMEncoder, self ).__init__()
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        self.num_layer = num_layer
+        self.encoder = nn.LSTM( input_size, hidden_size )
+
+    def initial_hidden( self, batch_size ):
+        # treat initial state as variable that can be trained
+        # initial_state = torch.autograd.Variable( torch.zeros( 1, batch_size, self.hidden_size, device=DEVICE ) )
+        initial_state = torch.autograd.Variable( torch.zeros( 1, batch_size, self.hidden_size, device=DEVICE ) )
+        return initial_state
+
+    def forward( self, embedded_input, hidden, batch_size ):
+        embedded_input = embedded_input.view( 1, batch_size, self.input_size )
+        output = embedded_input
+        for l in range( self.num_layer ):
+            output, hidden = self.encoder( output, hidden )
+            # print( "Finish Encoder Layer {}".format( l ) )
+            # print( "Output size: {} hidden size: {}".format( output.size(), hidden.size() ) )
+        return output, hidden
+
+class BaselineLSTMDecoder( nn.Module ):
+    def __init__( self, input_size, hidden_size, output_size, num_layer ):
+        super( BaselineLSTMDecoder, self ).__init__()
+        self.input_size = input_size
+        self.num_layer = num_layer
+        self.decoder = nn.LSTM( input_size, hidden_size )
+        self.out = nn.Linear( hidden_size, output_size )
+        self.softmax = nn.LogSoftmax( dim=1 )
+
+    # decoder's input should start from the SOS token
+    def forward( self, embedded_input, hidden, batch_size ):
+        embedded_input = embedded_input.view( 1, batch_size, self.input_size )
+        output = embedded_input
+        for _ in range( self.num_layer ):
+            print("in f")
+            output = F.relu( output )
+            print("out f")
+            print("in de")
+            output, hidden = self.decoder( output, hidden )
+            print("out de")
         output = self.softmax( self.out( output[ 0 ] ) )
         return output, hidden

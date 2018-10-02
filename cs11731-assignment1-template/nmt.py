@@ -137,6 +137,7 @@ class NMT(object):
         [ batch_size, sentence_len, embed_len ] = src_embed.size()
 
         src_var = src_embed.view( ( sentence_len, batch_size, embed_len ) )
+        # print("encode sentence len {}".format( sentence_len ) )
         if USE_CUDA: src_var = src_var.cuda()
         e_hidden = self.encoder.initial_hidden( batch_size )
         for e_i in range( sentence_len ):
@@ -144,6 +145,7 @@ class NMT(object):
 
         _, e_0s = self.embed( [ [ '<s>' ] for i in range( batch_size ) ] )
         decoder_init_state = torch.tensor( e_0s )
+        # print( "Exit encoding" )
         return e_hidden, decoder_init_state
         # end yingjinl
 
@@ -165,13 +167,14 @@ class NMT(object):
         scores = 0
         true_indices, _ = self.embed( tgt_sents )
         [ batch_size, sentence_len ] = true_indices.size()
-
+        # print( "decode sentence len {}".format( sentence_len ) )
         tar_var = true_indices.view( sentence_len, batch_size )
         if USE_CUDA: tar_var.cuda()
 
         d_input = decoder_init_state.cuda() if USE_CUDA else decoder_init_state
         d_hidden = src_encodings
         for d_i in range( sentence_len ):
+            # print( "D_i reach {}, with d_input dim {}".format( d_i, d_input.size() ) )
             d_out, d_hidden = self.decoder( d_input, d_hidden, batch_size )
             # code taken from https://github.com/pengyuchen/PyTorch-Batch-Seq2seq/blob/master/seq2seq_translation_tutorial.py
             topv, topi = d_out.data.topk( 1, dim = 1 )
@@ -179,6 +182,8 @@ class NMT(object):
             d_input = self.tar_embedder( topi.type( torch.LongTensor ) )
             if USE_CUDA: d_input = d_input.cuda()
             scores += self.loss( d_out, tar_var[ d_i, : ] )
+            
+        # print( "Exit decode" )
         return scores
     # begin yingjinl
     def pad_batch( self, indices_list ):
@@ -417,7 +422,7 @@ def train(args: Dict[str, str]):
 
         for src_sents, tgt_sents in batch_iter(train_data, batch_size=train_batch_size, shuffle=True):
             train_iter += 1
-            print( "train iter:{}".format( train_iter ) )
+            print( "train iter: {}".format( train_iter ) )
 
             batch_size = len(src_sents)
 
