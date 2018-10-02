@@ -250,30 +250,60 @@ class NMT(object):
     # this is a test comment
     # end yingjinl
 
-    class Hypothesis(object):
-        def __init__(self, d_hidden, value = ['<s>'], score = 0.):
+    class Hypothesis_(object):
+        def __init__(self, d_hidden, indices = [1], score = 0.): # 1 is the index of '<s>'
             self.d_hidden = d_hidden
+            self.indices = indices
+            self.score = score
+            self.complete = self.indices[-1] != 2 # 2 is the index of '</s>'
+
+        def indices_to_words(self, id2word):
+            return Hypothesis([id2word[i] for i in self.indices], self.score)
+
+    class Hypothesis(object):
+        def __init__(self, value, score):
             self.value = value
             self.score = score
-            self.incomplete = self.value[-1] == '</s>'
 
-        def completed(self):
-            return self.value[-1] == '</s>'
+    def new_hypotheses(self, hypotheses, beam_size):
+        complete, incomplete = [], []
+        for hypothesis in hypotheses:
+            partition = complete if hypothesis.complete else incomplete
+            partition.append(hypothesis)
+        complete_len = len(complete)
 
-        def generate_candidates(self, model):
-            if self.incomplete:
-                d_input = [model.embed(self.value[-1:])]
-                d_out, self.d_hidden = model.decoder.forward(d_input, self.d_hidden, 1)
-                scores = torch.nn.functional.log_softmax(d_out, dim = 0)
-                return scores + self.score
-            return self.score
+        pad_size = batch_size - complete_len
+        d_hidden = np.pad(
+            [hypothesis.d_hidden for hypothesis in incomplete],
+            ((0, pad_size), (0, 0)),
+            mode = 'constant', constant_values = 0)
+        d_prev_word_batch = np.pad(
+            [[hypothesis.indices[-1] for hypothesis in incomplete]],
+            ((0, 0), (0, pad_size)),
+            mode = 'constant', constant_values = 0)
+        d_hidden, prob_list = self.decode_one_step(d_hidden, d_prev_word_batch)
 
-    def divmod_(idx, lens):
-        ret = 0
-        while(idx >= lens[ret]):
-            idx -= lens[ret]
-            ret += 1
-        return ret, idx
+        all_probs = [prob + complete[i].score
+                     for prob in prob_list[i] for i in range(complete_len)] + \
+                     [hypothesis.score for hypothesis in complete]
+        top_indices = np.argsort(all_probs, axis = None)[-beam_size:]
+
+        new_hypotheses = []
+        V = len(self.vocab.tgt)
+        for index in top_indices:
+            complete_idx = index - V * completed_len
+            if complete_idx < 0:
+                hyp_idx, word_idx = divmod(index, V)
+                new_hypothesis = Hypothesis_(
+                    d_hidden[hyp_idx],
+                    completed[hyp_idx].indices + [index % V],
+                    all_probs[index])
+            else:
+                new_hypothesis = complete[complete_idx]
+
+            new_hypotheses.append(new_hypothesis)
+
+        return new_hypotheses
 
     def beam_search(self, src_sent, beam_size: int=5, max_decoding_time_step: int=70):
         """
@@ -293,29 +323,13 @@ class NMT(object):
         src_encodings, decoder_init_state = encode([src_sent])
 
         time = 0
-        hypotheses = [Hypothesis(decoder_init_state) for i in range(beam_size)]
-        while(time < max_decoding_time_step):
+        hypotheses = [Hypothesis_(decoder_init_state) for _ in range(beam_size)]
+        while(not all(hypothesis.complete for hypothesis in hypotheses)
+              and time < max_decoding_time_step):
             time += 1
-            all_candidates = [hypothesis.generate_candidates(self) for hypothesis in hypotheses]
-            lens = [len(candidates) for candidates in all_candidates] # 1 or |V_tgt|
+            hypotheses = self.new_hypotheses(hypotheses, beam_size)
 
-            scores, indices = torch.topk(input = torch.cat(all_candidates, dim = 0), k = beam_size, dim = 0)
-
-            new_hypotheses = []
-            for index in indices:
-                hyp_idx, word_idx = divmod_(index, lens)
-                hypothesis = hypotheses[hyp_idx]
-                new_hypotheses.append(
-                    Hypothesis(hypothesis.d_hidden,
-                               hypothesis.value + [vocab.tgt.id2word[word_idx]],
-                               float(scores[index]))
-                    if hypothesis.incomplete else hypothesis)
-
-            hypotheses = new_hypotheses
-            if sum(hypothesis.incomplete for hypothesis in hypotheses) == 0:
-                break
-
-        return hypotheses
+        return [hypothesis.indices_to_words(self.vocab.tgt.id2word) for hypothesis in hypotheses]
 
     def evaluate_ppl(self, dev_data, model, batch_size: int=32):
         """
