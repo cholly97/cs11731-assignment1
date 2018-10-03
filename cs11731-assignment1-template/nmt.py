@@ -232,7 +232,20 @@ class NMT(object):
         if USE_CUDA: word_indices_list = word_indices_list.cuda()
         return word_indices_list, sentence_batch
 
+    def decode_one_step( self, d_hidden, d_prev_word_batch ):
+        """
+        Take in previous hidden state and previous decoded word indices, 
+        return new hidden and decoded current word
 
+        Args:
+            d_hidden ( batch_size, hidden_size ): previous hidden state, if it is the start, takes in encoder hidden state
+            d_prev_word_batch ( 1, batch_size ): a batch of prev word indices
+
+        Returns:
+            d_hidden( batch_size, hidden_size ): the new decoder hidden state
+            prob_list( batch_size, tar_vocab_size ): return the scores of batch 
+        """
+        return d_hidden, prob_list
 
     # this is a test comment
     # end yingjinl
