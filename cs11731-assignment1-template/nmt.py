@@ -118,7 +118,8 @@ class NMT(object):
         if USE_TF:
             src_word_indices = self.vocab.src.words2indices( src_sents )
             tar_word_indices = self.vocab.tar.words2indices( tgt_sents )
-            _, scores = self.tf_model.train_one_iter( src_word_indices, tar_word_indices )
+            # here scores is loss
+            scores = self.tf_model.train_one_iter( src_word_indices, tar_word_indices )
 
         else:
             src_encodings, decoder_init_state = self.encode( src_sents )
@@ -127,7 +128,7 @@ class NMT(object):
             scores.backward()
             self.encoder_optim.step()
             self.decoder_optim.step()
-        return scores
+        return 
 
     def encode( self, src_sents ):
         """
@@ -479,7 +480,10 @@ def train(args: Dict[str, str]):
             batch_size = len(src_sents)
 
             # (batch_size)
-            loss = -model(src_sents, tgt_sents).item()
+            if USE_TF:
+                loss = model(src_sents, tgt_sents, lr = lr)
+            else:
+                loss = -model(src_sents, tgt_sents).item()
 
             report_loss += loss
             cum_loss += loss

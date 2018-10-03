@@ -177,11 +177,11 @@ class TF_Model( object ):
 		return h_t_telda
 
 	def train_one_iter( self, src_batch, tar_batch, lr ):
-		loss, _, scores = self.sess.run( [self.loss, self.optimizer, self.probs ], 
+		loss, _ = self.sess.run( [self.loss, self.optimizer ], 
 		                          feed_dict = { self.src_input: src_batch,
 								                self.tar_input: tar_batch,
 												self.lr: lr } )
-		return loss, scores
+		return loss
 
 	def encode_src( self, src_batch ):
 		e_hidden, h_s = self.sess.run( [ self.e_hidden, self.h_s ], feed_dict = { 
