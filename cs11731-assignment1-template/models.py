@@ -21,7 +21,7 @@ class BaselineGRUEncoder( nn.Module ):
         self.input_size = input_size
         self.hidden_size = hidden_size
         self.num_layer = num_layer
-        self.encoder = nn.GRU( input_size, hidden_size )
+        self.encoder = nn.GRU( input_size, hidden_size, num_layers = num_layer )
 
     def initial_hidden( self, batch_size ):
         # treat initial state as variable that can be trained
@@ -32,8 +32,7 @@ class BaselineGRUEncoder( nn.Module ):
     def forward( self, embedded_input, hidden, batch_size ):
         embedded_input = embedded_input.view( 1, batch_size, self.input_size )
         output = embedded_input
-        for l in range( self.num_layer ):
-            output, hidden = self.encoder( output, hidden )
+        output, hidden = self.encoder( output, hidden )
             # print( "Finish Encoder Layer {}".format( l ) )
             # print( "Output size: {} hidden size: {}".format( output.size(), hidden.size() ) )
         return output, hidden
@@ -43,17 +42,22 @@ class BaselineGRUDecoder( nn.Module ):
         super( BaselineGRUDecoder, self ).__init__()
         self.input_size = input_size
         self.num_layer = num_layer
-        self.decoder = nn.GRU( input_size, hidden_size )
+        self.inut_size = input_size
+        self.hidden_size = hidden_size
+        self.output_size = output_size
+        self.decoder = nn.GRU( input_size, hidden_size, num_layers = num_layer )
         self.out = nn.Linear( hidden_size, output_size )
         self.softmax = nn.LogSoftmax( dim=1 )
 
     # decoder's input should start from the SOS token
-    def forward( self, embedded_input, hidden, batch_size ):
-        embedded_input = embedded_input.view( 1, batch_size, self.input_size )
-        output = embedded_input
-        for _ in range( self.num_layer ):
-            # output = F.relu( output )
-            output, hidden = self.decoder( output, hidden )
+    def forward( self, inputs, hidden, batch_size ):
+        # inputs = inputs.view( 1, batch_size, self.input_size )
+        # inputs = inputs.view( batch_size, self.input_size )
+        output = inputs
+        # print( "decoder true input size", self.input_size, self.hidden_size  )
+        # print( "output size :", output.size() )
+        # print( "Hidden size", hidden.size() )
+        output, hidden = self.decoder( output, hidden )
         output = self.softmax( self.out( output[ 0 ] ) )
         return output, hidden
 
@@ -76,6 +80,7 @@ class BaselineLSTMEncoder( nn.Module ):
         embedded_input = embedded_input.view( 1, batch_size, self.input_size )
         output = embedded_input
         for l in range( self.num_layer ):
+            
             output, hidden = self.encoder( output, hidden )
             # print( "Finish Encoder Layer {}".format( l ) )
             # print( "Output size: {} hidden size: {}".format( output.size(), hidden.size() ) )

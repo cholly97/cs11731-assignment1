@@ -55,10 +55,14 @@ import os
 import torch
 import torch.nn as nn
 from torch import optim
+from torch.autograd import Variable as Variable
 import torch.nn.functional as F
-from models import *
-from tf_model import *
 from globals import *
+if USE_TF:
+    from tf_model import *
+else:
+    from models import *
+
 # end yingjinl
 
 Hypothesis = namedtuple('Hypothesis', ['value', 'score'])
@@ -72,6 +76,8 @@ class NMT(object):
         self.hidden_size = hidden_size
         self.dropout_rate = dropout_rate
         self.vocab = vocab
+        self.src_vocab_size = len( self.vocab.src.word2id )
+        self.tar_vocab_size = len( self.vocab.tgt.word2id )
         self.batch_size = batch_size
 
         if USE_TF:
@@ -84,8 +90,13 @@ class NMT(object):
             self.src_embedder = nn.Embedding( len( self.vocab.src.word2id ) , self.embed_size )
             self.tar_embedder = nn.Embedding( len( self.vocab.tgt.word2id ) , self.embed_size )
 
-            self.encoder = BaselineGRUEncoder( self.embed_size, self.hidden_size, 2 )
-            self.decoder = BaselineGRUDecoder( self.embed_size, self.hidden_size, self.embed_size, 2 )
+            self.d_out_to_embed_w = Variable( torch.tensor( np.random.uniform( low = -1, high = 1, 
+                                              size = [ self.embed_size, self.tar_vocab_size ] ), dtype = torch.float) ).cuda()
+            self.d_out_to_embed_b = Variable( torch.tensor( np.random.uniform( low = -1, high = 1,
+                                              size = [ self.tar_vocab_size ] ), dtype = torch.float ) ).cuda()
+
+            self.encoder = BaselineGRUEncoder( self.embed_size, self.hidden_size, 1 )
+            self.decoder = BaselineGRUDecoder( self.embed_size, self.hidden_size, self.embed_size, 1 )
             self.encoder.to( DEVICE )
             self.decoder.to( DEVICE )
             self.lr = 1e-4
@@ -122,13 +133,13 @@ class NMT(object):
             scores = self.tf_model.train_one_iter( src_word_indices, tar_word_indices )
 
         else:
-            src_encodings, decoder_init_state = self.encode( src_sents )
-            scores = self.decode(src_encodings, decoder_init_state, tgt_sents)
+            decoder_input, decoder_hidden = self.encode( src_sents )
+            scores = self.decode( decoder_hidden, decoder_input, tgt_sents )
 
             scores.backward()
             self.encoder_optim.step()
             self.decoder_optim.step()
-        return
+        return scores
 
     def encode( self, src_sents ):
         """
@@ -159,13 +170,17 @@ class NMT(object):
             for e_i in range( sentence_len ):
                 _, e_hidden = self.encoder( src_var[ e_i ], e_hidden, batch_size )
 
-            e_0s = self.vocab.tar.words2indices( [ [ '<s>' ] for i in range( batch_size ) ] )
-            decoder_init_state = torch.tensor( e_0s )
+            e_0s = self.vocab.tgt.words2indices( [ [ '<s>' ] for i in range( batch_size ) ] )
+            e_0s = self.tar_embedder( torch.tensor( e_0s ).view( 1, batch_size ) )
+            decoder_input = e_0s
+            decoder_hidden = e_hidden
+            # print( "e_0s shape", e_0s.size() )  
             # print( "Exit encoding" )
 
-        return e_hidden, decoder_init_state
+        return decoder_input, decoder_hidden
 
     def decode(self, src_encodings, decoder_init_state, tgt_sents):
+                     # hidden state,decodr input
         """
         Given source encodings, compute the log-likelihood of predicting the gold-standard target
         sentence tokens
@@ -189,20 +204,24 @@ class NMT(object):
             [ batch_size, sentence_len ] = true_indices.size()
             # print( "decode sentence len {}".format( sentence_len ) )
             tar_var = true_indices.view( sentence_len, batch_size )
-            if USE_CUDA: tar_var.cuda()
-
-            d_input = decoder_init_state.cuda() if USE_CUDA else decoder_init_state
             d_hidden = src_encodings
+            d_input = decoder_init_state.cuda() if USE_CUDA else decoder_init_state
             for d_i in range( sentence_len ):
                 # print( "D_i reach {}, with d_input dim {}".format( d_i, d_input.size() ) )
                 d_out, d_hidden = self.decoder( d_input, d_hidden, batch_size )
                 # code taken from https://github.com/pengyuchen/PyTorch-Batch-Seq2seq/blob/master/seq2seq_translation_tutorial.py
+                # project the output into embedding dim
+                d_out = torch.matmul( d_out.view( batch_size, self.embed_size ), self.d_out_to_embed_w ) + self.d_out_to_embed_b
+                # this is # (batch_size, vocab size)
+                d_out = F.softmax( d_out, dim = 1 )
                 topv, topi = d_out.data.topk( 1, dim = 1 )
                 # Cast from torch.cuda.LongTensor to regular Long tensor
-                d_input = self.tar_embedder( topi.type( torch.LongTensor ) )
-                if USE_CUDA: d_input = d_input.cuda()
-                scores += self.loss( d_out, tar_var[ d_i, : ] )
 
+                # d_input = self.tar_embedder( topi.type( torch.LongTensor ) )
+                d_input = tar_var[ d_i ]
+                scores += self.loss( d_out, d_input )
+                d_input = self.tar_embedder( topi.type( torch.LongTensor ) ).view( 1, batch_size, self.embed_size )
+                if USE_CUDA: d_input = d_input.cuda()
             # print( "Exit decode" )
         return scores
     # begin yingjinl
