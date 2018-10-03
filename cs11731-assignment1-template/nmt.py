@@ -128,7 +128,7 @@ class NMT(object):
             scores.backward()
             self.encoder_optim.step()
             self.decoder_optim.step()
-        return 
+        return
 
     def encode( self, src_sents ):
         """
@@ -162,7 +162,7 @@ class NMT(object):
             e_0s = self.vocab.tar.words2indices( [ [ '<s>' ] for i in range( batch_size ) ] )
             decoder_init_state = torch.tensor( e_0s )
             # print( "Exit encoding" )
-        
+
         return e_hidden, decoder_init_state
 
     def decode(self, src_encodings, decoder_init_state, tgt_sents):
@@ -202,7 +202,7 @@ class NMT(object):
                 d_input = self.tar_embedder( topi.type( torch.LongTensor ) )
                 if USE_CUDA: d_input = d_input.cuda()
                 scores += self.loss( d_out, tar_var[ d_i, : ] )
-                
+
             # print( "Exit decode" )
         return scores
     # begin yingjinl
@@ -260,7 +260,7 @@ class NMT(object):
 
     def decode_one_step( self, d_hidden, d_prev_word_batch ):
         """
-        Take in previous hidden state and previous decoded word indices, 
+        Take in previous hidden state and previous decoded word indices,
         return new hidden and decoded current word
 
         Args:
@@ -269,7 +269,7 @@ class NMT(object):
 
         Returns:
             d_hidden( batch_size, hidden_size ): the new decoder hidden state
-            prob_list( batch_size, tar_vocab_size ): return the scores of batch 
+            prob_list( batch_size, tar_vocab_size ): return the scores of batch
         """
         prob_list, d_hidden = self.tf_model.decode_one_step( d_hidden, d_prev_word_batch, self.h_s )
         return d_hidden, prob_list
