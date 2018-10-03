@@ -12,7 +12,7 @@ from tf_utils import *
 class TF_Model( object ):
 
 	def __init__( self, batch_size, embed_size, hidden_size, lr, lr_decay, dropout_rate=0.2,
-	              initializer = tf.random_uniform_initializer( -1.0, 1.0 ), teacher_sup = False ):
+	              initializer = tf.random_uniform_initializer( -1.0, 1.0 ), teacher_sup = True ):
 
 		self.sess = None
 		self.batch_size = batch_size
@@ -48,8 +48,6 @@ class TF_Model( object ):
 		self.build_graph()
 		self.saver = tf.train.Saver()
 
-
-
 	def build_projection( self ):
 		with tf.variable_scope( "encoder" ) as scope:
 
@@ -73,7 +71,9 @@ class TF_Model( object ):
 		self.tar_input = tf.placeholder( tf.int32, [ self.batch_size, self.tar_max_size ], name = "tar_input" )
 		# sample should always just provide begining of the word
 		self.tar_sample = tf.placeholder( tf.float32, [ 1, self.batch_size ] )
-		self.tar_prev_state = tf.place_holder( tf.float32, [  ] )
+		self.tar_prev_state_c = tf.place_holder( tf.float32, [ self.batch_size, self.hidden_size ] )
+		self.tar_prev_state_m = tf.place_holder( tf.float32, [ self.batch_size, self.hidden_size ] )
+		self.h_s_sample = tf.place_holder( tf.float32, [ self.src_max_size, self.batch_size, self.hidden_size ] )
 		self.lr = tf.placeholder( tf.float32, [1], name = "lr" )
 
 	def build_attention( self ):
@@ -110,9 +110,12 @@ class TF_Model( object ):
 				# x: ( batch_size, hidden size )
                 e_output, e_state = self.encoder( x, e_state )
                 h_s.append( e_output )
-		h_s = tf.pack( h_s )
+			# the final hidden state of the encoder
+		self.e_hidden = e_state
+		self.h_s = tf.pack( h_s )
+		
 
-		# this is TODO
+		# this is TODO, should we have zero initial?
 		d_state = self.decoder.zero_state( self.batch_size, tf.float32 )
 		d_state = e_state
 		with tf.variable_scope( "decoder" ) as scope:
@@ -128,39 +131,39 @@ class TF_Model( object ):
 				x = target_xs[ step ]
 				x = tf.matmul( x, self.tar_proj_w ) + self.tar_proj_b
                 h_t, d_state = self.decoder( x, d_state )
-                h_t_telda = self.attention( h_t, h_s )
+                h_t_telda = self.attention( h_t, self.h_s )
 
 				output_embed = tf.matmul( h_t_telda, self.proj_w ) + self.proj_b
 				logit = tf.matmul( output_embed, self.proj_wo ) + self.proj_bo
 				logit_list.append( logit )
 				prob  = tf.nn.softmax( logit )
 				prob_list.append( prob )
-		# get rid of the end of sentence mark TODO
-		logit_list = logit_list[ : -1 ]
+		# get rid of the end of sentence mark? TODO
+		logit_list = logit_list
 		logit_list = tf.pack( logit_list )
-		# get rid of begining of the sentence TODO
+		# get rid of begining of the sentence? TODO
+		# convert target into one hot labels to do softmax loss
 		tar = tf.one_hot( self.tar_input, self.tar_maxval )
-		tar = tf.reshape( tar, [ self.tar_max_size, self.batch_size, self.tar_maxval ] )[ 1:, : ]
+		tar = tf.reshape( tar, [ self.tar_max_size, self.batch_size, self.tar_maxval ] )
+		# soft max cross entropy loss
 		self.loss  = tf.softmax_cross_entropy_with_logits_v2( labels = tar, logits = logit_list )
         # ( batch_size, sentence_len, prob embed )
 		self.probs = tf.transpose( tf.pack( probs ), [ 1, 0, 2 ] )
 		self.optimizer = tf.train.GradientDescentOptimizer( self.lr ).minimize( self.loss )
 
 		# construct sampling decoder:
-		tar_sample = tf.nn.embedding_lookup( self.tar_embed_matrix, self.tar_sample )
-		with tf.variable_scope(  )
+		
+		with tf.variable_scope( "decoder", reuse = True ):
+			tar_sample = tf.nn.embedding_lookup( self.tar_embed_matrix, self.tar_sample )
 			tar_sample = tf.matmul( tar_sample, self.tar_proj_w ) + self.tar_proj_b
-			h_t, d_state = self.decoder( x, d_state )
-			h_t_telda = self.attention( h_t, h_s )
+			h_t, d_state = self.decoder( tar_sample, ( self.tar_prev_state_c, self.tar_prev_state_m ) )
+			h_t_telda = self.attention( h_t, self.h_s )
 
 			output_embed = tf.matmul( h_t_telda, self.proj_w ) + self.proj_b
 			logit = tf.matmul( output_embed, self.proj_wo ) + self.proj_bo
-			prob = tf.nn.softmax( logit )
-			indice = tf.argmax( prob, axis = 1 )
-			tar_sample = tf.nn.embedding_lookup( self.tar_embed_matrix, indice )
-		
-
-
+			self.prob_sample = tf.nn.softmax( logit )
+			self.d_state_sample = d_state
+			
 
 	def attention( self, h_t, h_s ):
 		# first choice of the attention 
@@ -174,13 +177,28 @@ class TF_Model( object ):
 		return h_t_telda
 
 	def train_one_iter( self, src_batch, tar_batch, lr ):
-		loss, _ = self.sess.run( [self.loss, self.optimizer ], 
+		loss, _, scores = self.sess.run( [self.loss, self.optimizer, self.probs ], 
 		                          feed_dict = { self.src_input: src_batch,
 								                self.tar_input: tar_batch,
 												self.lr: lr } )
-		return loss
+		return loss, scores
 
-	def sample( self, src_batch ):
-		prob = self.sess.run(  )
+	def encode_src( self, src_batch ):
+		e_hidden, h_s = self.sess.run( [ self.e_hidden, self.h_s ], feed_dict = { 
+														self.src_input: src_batch
+		 } )
+		return e_hidden, h_s
+
+
+	def decode_one_step( self, d_hidden, d_prev_word, h_s ):
+		prob, d_hidden = self.sess.run( [ self.prob_sample, self.d_state_sample ],
+		                        feed_dict = {
+									self.h_s_sample: h_s,
+									self.tar_sample: d_prev_word
+									self.tar_prev_state_c: d_hidden[ 0 ],
+									self.tar_prev_state_m: d_hidden[ 1 ]
+								} )
+		return prob, d_hidden
+
 
 

@@ -57,43 +57,50 @@ import torch.nn as nn
 from torch import optim
 import torch.nn.functional as F
 from models import *
+from tf_model import *
+from globals import *
 # end yingjinl
 
 Hypothesis = namedtuple('Hypothesis', ['value', 'score'])
 
 class NMT(object):
 
-    def __init__(self, embed_size, hidden_size, vocab, dropout_rate=0.2):
+    def __init__(self, embed_size, hidden_size, vocab, batch_size = 64, lr = 1e-4, lr_decay = 0.2, dropout_rate=0.2):
         super(NMT, self).__init__()
 
         self.embed_size = embed_size
         self.hidden_size = hidden_size
         self.dropout_rate = dropout_rate
         self.vocab = vocab
+        self.batch_size = batch_size
 
-        # initialize neural network laBaselineGRUEncoderyers...
+        if USE_TF:
+            self.tf_model = TF_Model( batch_size, embed_size, hidden_size, lr, lr_decay )
+            self.tf_model.initialize()
+        else:
+            # initialize neural network laBaselineGRUEncoderyers...
 
-        # begin yingjinl
-        self.src_embedder = nn.Embedding( len( self.vocab.src.word2id ) , self.embed_size )
-        self.tar_embedder = nn.Embedding( len( self.vocab.tgt.word2id ) , self.embed_size )
+            # begin yingjinl
+            self.src_embedder = nn.Embedding( len( self.vocab.src.word2id ) , self.embed_size )
+            self.tar_embedder = nn.Embedding( len( self.vocab.tgt.word2id ) , self.embed_size )
 
-        self.encoder = BaselineGRUEncoder( self.embed_size, self.hidden_size, 2 )
-        self.decoder = BaselineGRUDecoder( self.embed_size, self.hidden_size, self.embed_size, 2 )
-        self.encoder.to( DEVICE )
-        self.decoder.to( DEVICE )
-        self.lr = 1e-4
-        self.encoder_optim = optim.SGD( filter( lambda x: x.requires_grad, self.encoder.parameters() ),
-                                  lr=self.lr )
-        self.decoder_optim = optim.SGD( filter( lambda x: x.requires_grad, self.decoder.parameters() ),
-                                  lr=self.lr )
-        # if USE_CUDA:
-        #     self.encoder_optim.cuda()
-        #     self.decoder_optim.cuda()
-        self.loss = nn.NLLLoss()
-        # end yingjinl
+            self.encoder = BaselineGRUEncoder( self.embed_size, self.hidden_size, 2 )
+            self.decoder = BaselineGRUDecoder( self.embed_size, self.hidden_size, self.embed_size, 2 )
+            self.encoder.to( DEVICE )
+            self.decoder.to( DEVICE )
+            self.lr = 1e-4
+            self.encoder_optim = optim.SGD( filter( lambda x: x.requires_grad, self.encoder.parameters() ),
+                                    lr=self.lr )
+            self.decoder_optim = optim.SGD( filter( lambda x: x.requires_grad, self.decoder.parameters() ),
+                                    lr=self.lr )
+            # if USE_CUDA:
+            #     self.encoder_optim.cuda()
+            #     self.decoder_optim.cuda()
+            self.loss = nn.NLLLoss()
+            # end yingjinl
 
 
-    def __call__( self, src_sents , tgt_sents ):
+    def __call__( self, src_sents , tgt_sents, lr = 1e-4 ):
         """
         take a mini-batch of source and target sentences, compute the log-likelihood of
         target sentences.
@@ -107,15 +114,19 @@ class NMT(object):
                 log-likelihood of generating the gold-standard target sentence for
                 each example in the input batch
         """
-        src_encodings, decoder_init_state = self.encode( src_sents )
-        scores = self.decode(src_encodings, decoder_init_state, tgt_sents)
 
-        # begin yingjinl
-        scores.backward()
-        self.encoder_optim.step()
-        self.decoder_optim.step()
-        # end yingjinl
+        if USE_TF:
+            src_word_indices = self.vocab.src.words2indices( src_sents )
+            tar_word_indices = self.vocab.tar.words2indices( tgt_sents )
+            _, scores = self.tf_model.train_one_iter( src_word_indices, tar_word_indices )
 
+        else:
+            src_encodings, decoder_init_state = self.encode( src_sents )
+            scores = self.decode(src_encodings, decoder_init_state, tgt_sents)
+
+            scores.backward()
+            self.encoder_optim.step()
+            self.decoder_optim.step()
         return scores
 
     def encode( self, src_sents ):
@@ -130,24 +141,28 @@ class NMT(object):
                 with shape (batch_size, source_sentence_length, encoding_dim), or in orther formats
             decoder_init_state: decoder GRU/LSTM's initial state, computed from source encodings
         """
-        # begin yingjinl
+        if USE_TF:
+            src_batch = self.vocab.src.words2indices( vocab.tar.words2indices )
+            src_batch = self.pad_batch( src_batch, _type = "src" )
+            e_hidden, self.h_s = self.tf_model( src_batch )
+            decoder_init_state = np.array( self.vocab.tar.words2indices( [ [ '<s>' ] for i in range( batch_size ) ] ) ).reshape( ( 1, self.batch_size ) ).astype( np.int32 )
+        else:
+            #( batch_size, sentence length, embed length )
+            _, src_embed = self.embed( src_sents )
+            [ batch_size, sentence_len, embed_len ] = src_embed.size()
 
-        #( batch_size, sentence length, embed length )
-        _, src_embed = self.embed( src_sents )
-        [ batch_size, sentence_len, embed_len ] = src_embed.size()
+            src_var = src_embed.view( ( sentence_len, batch_size, embed_len ) )
+            # print("encode sentence len {}".format( sentence_len ) )
+            if USE_CUDA: src_var = src_var.cuda()
+            e_hidden = self.encoder.initial_hidden( batch_size )
+            for e_i in range( sentence_len ):
+                _, e_hidden = self.encoder( src_var[ e_i ], e_hidden, batch_size )
 
-        src_var = src_embed.view( ( sentence_len, batch_size, embed_len ) )
-        # print("encode sentence len {}".format( sentence_len ) )
-        if USE_CUDA: src_var = src_var.cuda()
-        e_hidden = self.encoder.initial_hidden( batch_size )
-        for e_i in range( sentence_len ):
-            _, e_hidden = self.encoder( src_var[ e_i ], e_hidden, batch_size )
-
-        _, e_0s = self.embed( [ [ '<s>' ] for i in range( batch_size ) ] )
-        decoder_init_state = torch.tensor( e_0s )
-        # print( "Exit encoding" )
+            e_0s = self.vocab.tar.words2indices( [ [ '<s>' ] for i in range( batch_size ) ] )
+            decoder_init_state = torch.tensor( e_0s )
+            # print( "Exit encoding" )
+        
         return e_hidden, decoder_init_state
-        # end yingjinl
 
     def decode(self, src_encodings, decoder_init_state, tgt_sents):
         """
@@ -164,36 +179,45 @@ class NMT(object):
                 log-likelihood of generating the gold-standard target sentence for
                 each example in the input batch
         """
-        scores = 0
-        true_indices, _ = self.embed( tgt_sents )
-        [ batch_size, sentence_len ] = true_indices.size()
-        # print( "decode sentence len {}".format( sentence_len ) )
-        tar_var = true_indices.view( sentence_len, batch_size )
-        if USE_CUDA: tar_var.cuda()
+        if USE_TF:
+            print( "this is not implemented" )
+        else:
+            scores = 0
+            true_indices, _ = self.embed( tgt_sents )
+            [ batch_size, sentence_len ] = true_indices.size()
+            # print( "decode sentence len {}".format( sentence_len ) )
+            tar_var = true_indices.view( sentence_len, batch_size )
+            if USE_CUDA: tar_var.cuda()
 
-        d_input = decoder_init_state.cuda() if USE_CUDA else decoder_init_state
-        d_hidden = src_encodings
-        for d_i in range( sentence_len ):
-            # print( "D_i reach {}, with d_input dim {}".format( d_i, d_input.size() ) )
-            d_out, d_hidden = self.decoder( d_input, d_hidden, batch_size )
-            # code taken from https://github.com/pengyuchen/PyTorch-Batch-Seq2seq/blob/master/seq2seq_translation_tutorial.py
-            topv, topi = d_out.data.topk( 1, dim = 1 )
-            # Cast from torch.cuda.LongTensor to regular Long tensor
-            d_input = self.tar_embedder( topi.type( torch.LongTensor ) )
-            if USE_CUDA: d_input = d_input.cuda()
-            scores += self.loss( d_out, tar_var[ d_i, : ] )
-            
-        # print( "Exit decode" )
+            d_input = decoder_init_state.cuda() if USE_CUDA else decoder_init_state
+            d_hidden = src_encodings
+            for d_i in range( sentence_len ):
+                # print( "D_i reach {}, with d_input dim {}".format( d_i, d_input.size() ) )
+                d_out, d_hidden = self.decoder( d_input, d_hidden, batch_size )
+                # code taken from https://github.com/pengyuchen/PyTorch-Batch-Seq2seq/blob/master/seq2seq_translation_tutorial.py
+                topv, topi = d_out.data.topk( 1, dim = 1 )
+                # Cast from torch.cuda.LongTensor to regular Long tensor
+                d_input = self.tar_embedder( topi.type( torch.LongTensor ) )
+                if USE_CUDA: d_input = d_input.cuda()
+                scores += self.loss( d_out, tar_var[ d_i, : ] )
+                
+            # print( "Exit decode" )
         return scores
     # begin yingjinl
-    def pad_batch( self, indices_list ):
+    def pad_batch( self, indices_list, _type = "src" ):
         """
 
         Padd the input batch to make them equal to the length of the longest sentence
         Args:
             indices_list ( batch_size, sentence_len )
         """
-        longest_len = max( map( len, indices_list ) )
+        if USE_TF:
+            if _type == "src":
+                longest_len = SRC_MAX_SIZE
+            else:
+                longest_len = TAR_MAX_SIZE
+        else:
+            longest_len = max( map( len, indices_list ) )
         for i in range( len( indices_list ) ):
             indices_list[ i ] += [ self.vocab.src.word2id[ "<pad>" ] ] * ( longest_len - len( indices_list[ i ] ) )
         return indices_list
@@ -245,6 +269,7 @@ class NMT(object):
             d_hidden( batch_size, hidden_size ): the new decoder hidden state
             prob_list( batch_size, tar_vocab_size ): return the scores of batch 
         """
+        prob_list, d_hidden = self.tf_model.decode_one_step( d_hidden, d_prev_word_batch, self.h_s )
         return d_hidden, prob_list
 
     # this is a test comment
