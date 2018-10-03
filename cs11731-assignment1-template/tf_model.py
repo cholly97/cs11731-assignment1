@@ -32,6 +32,7 @@ class TF_Model( object ):
         self.initializer = initializer
         self.is_sample = False
         self.teacher_sup = teacher_sup
+        self.attention_type = 'dot' # 'dot' | 'general' | 'concat'
         self.build_variable()
         self.initialize()
 
@@ -81,6 +82,15 @@ class TF_Model( object ):
         with tf.variable_scope( "decoder" ) as scope:
             self.w_c = tf.get_variable( "w_c", shape = [ 2 * self.hidden_size, self.hidden_size ], initializer = self.initializer )
             self.b_c = tf.get_variable( "b_c", shape = [ self.hidden_size ], initializer = self.initializer )
+            if self.attention_type == 'dot':
+                pass
+            elif self.attention_type == 'general':
+                self.w_a = tf.get_variable( "w_a" shape = [ self.hidden_size, self.hidden_size ], initializer = self.initializer )
+            elif self.attention_type == 'concat':
+                self.w_a = tf.get_variable( "w_a" shape = [ 2 * self.hidden_size, self.hidden_size ], initializer = self.initializer )
+                self.v_a = tf.get_variable( "v_a" shape = [ self.hidden_size, 1 ], initializer = self.initializer )
+            else:
+                pass
 
     def build_network( self ):
         with tf.variable_scope( "encoder" ) as scope:
@@ -181,8 +191,13 @@ class TF_Model( object ):
             
 
     def attention( self, h_t, h_s ):
+<<<<<<< HEAD
+        # first choice of the attention
+        scores = self.score( h_t, h_s )
+=======
         # first choice of the attention 
         scores = tf.reduce_sum( tf.multiply( h_s, h_t ), 2 )
+>>>>>>> 0903af3dfd270e23f65a971d97c8284194b76078
         a_t = tf.nn.softmax( tf.transpose( scores ) )
         a_t = tf.expand_dims( a_t, 2 )
         c_t = tf.matmul( tf.transpose( h_s, perm=[ 1,2,0 ] ), a_t )
@@ -190,6 +205,19 @@ class TF_Model( object ):
         h_t_telda = tf.tanh( tf.matmul( tf.concat( [h_t, c_t], axis = 1 ), self.w_c ) + self.b_c )
 
         return h_t_telda
+
+    def score( self, h_t, h_s ):
+        if self.attention_type == 'dot':
+            return tf.reduce_sum( tf.mul( h_s, h_t ), 2 )
+        elif self.attention_type == 'general':
+            return tf.reduce_sum( tf.mul( tf.matmul(h_s, self.w_a), h_t ), 2 )
+        elif self.attention_type == 'concat':
+            return tf.squeeze( tf.matmul(
+                tf.tanh( tf.matmul( tf.concat( h_s, h_t, 1 ), self.w_a ) ),
+                self.v_a ) )
+        else:
+            print( 'incorrect attention type' )
+            return
 
     def train_one_iter( self, src_batch, tar_batch, lr ):
         loss, _ = self.sess.run( [self.loss, self.optimizer ], 
