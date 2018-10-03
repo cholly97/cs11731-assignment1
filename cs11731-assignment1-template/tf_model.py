@@ -191,13 +191,8 @@ class TF_Model( object ):
             
 
     def attention( self, h_t, h_s ):
-<<<<<<< HEAD
-        # first choice of the attention
-        scores = self.score( h_t, h_s )
-=======
         # first choice of the attention 
         scores = tf.reduce_sum( tf.multiply( h_s, h_t ), 2 )
->>>>>>> 0903af3dfd270e23f65a971d97c8284194b76078
         a_t = tf.nn.softmax( tf.transpose( scores ) )
         a_t = tf.expand_dims( a_t, 2 )
         c_t = tf.matmul( tf.transpose( h_s, perm=[ 1,2,0 ] ), a_t )
