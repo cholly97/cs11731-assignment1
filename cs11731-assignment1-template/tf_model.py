@@ -54,8 +54,8 @@ class TF_Model( object ):
         with tf.variable_scope( "encoder" ) as scope:
 
             self.src_embed_matrix = tf.get_variable( "src_embed_matrix", shape = [ self.src_maxval, self.embed_size ], initializer = self.initializer )
-            self.src_proj_w = tf.get_variable( "src_proj_w", shape=[ self.embed_size, self.hidden_size ], initializer = self.initializer )
-            self.src_proj_b = tf.get_variable( "src_proj_b", shape=[ self.hidden_size ], initializer = self.initializer )
+            self.src_proj_w = tf.get_variable( "src_proj_w", shape=[ self.embed_size, self.embed_size ], initializer = self.initializer )
+            self.src_proj_b = tf.get_variable( "src_proj_b", shape=[ self.embed_size ], initializer = self.initializer )
 
         with tf.variable_scope( "decoder" ) as scope:
             # input projection
@@ -85,30 +85,18 @@ class TF_Model( object ):
             if self.attention_type == 'dot':
                 pass
             elif self.attention_type == 'general':
-                self.w_a = tf.get_variable( "w_a" shape = [ self.hidden_size, self.hidden_size ], initializer = self.initializer )
+                self.w_a = tf.get_variable( "w_a", shape = [ self.hidden_size, self.hidden_size ], initializer = self.initializer )
             elif self.attention_type == 'concat':
-                self.w_a = tf.get_variable( "w_a" shape = [ 2 * self.hidden_size, self.hidden_size ], initializer = self.initializer )
-                self.v_a = tf.get_variable( "v_a" shape = [ self.hidden_size, 1 ], initializer = self.initializer )
+                self.w_a = tf.get_variable( "w_a", shape = [ 2 * self.hidden_size, self.hidden_size ], initializer = self.initializer )
+                self.v_a = tf.get_variable( "v_a", shape = [ self.hidden_size, 1 ], initializer = self.initializer )
             else:
                 pass
 
     def build_network( self ):
-        with tf.variable_scope( "encoder" ) as scope:
-            layer = rnn.LSTMCell( self.hidden_size, state_is_tuple = True )
+        with tf.variable_scope( "encoder", reuse = tf.AUTO_REUSE ) as scope:
+            layer = rnn.LSTMCell( self.hidden_size, state_is_tuple = True, reuse = tf.AUTO_REUSE )
             layer = rnn.DropoutWrapper( layer, output_keep_prob = ( 1 - self.dropout_rate ) )
             self.encoder = rnn.MultiRNNCell( [ layer ] * self.num_layers, state_is_tuple = True )
-
-        with tf.variable_scope( "decoder" ) as scope:
-        	layers = []
-        	for i in range( self.num_layers - 1 ):
-        		layer = append( rnn.LSTMCell( self.hidden_size, state_is_tuple = True ) )
-        		layer = rnn.DropoutWrapper( layer, output_keep_prob = ( 1 - self.dropout_rate ) )
-        		layers.append( layer )
-            atten_cell = rnn.LSTMCell( self.hidden_size, state_is_tuple = True )
-            atten_cell = tf.contrib.seq2seq.AttentionWrapper( atten_cell, atten_mech, attention_size = self.hidden_size )
-            atten_cell = rnn.DropoutWrapper( atten_cell, output_keep_prob = ( 1 - self.dropout_rate ) )
-            layers.append( atten_cell )
-            self.decoder = rnn.MultiRNNCell( layers, state_is_tuple = True )
 
     def build_graph( self ):
         # embed input for src and tar
@@ -116,8 +104,8 @@ class TF_Model( object ):
             source_xs = tf.nn.embedding_lookup( self.src_embed_matrix, self.src_input )
             # source_xs = tf.split( source_xs, self.src_max_size, 1 )
             source_xs = tf.reshape( source_xs, [self.src_max_size, self.batch_size, self.embed_size ] )
-            # ( src_max_size, batch_size, hidden_size )
-            source_xs = tf.matmul( x, self.src_proj_w ) + self.src_proj_b
+            # ( src_max_size, batch_size, embed_size )
+            source_xs = tf.matmul( source_xs, tf.tile( tf.expand_dims( self.src_proj_w, 0 ), [self.src_max_size, 1, 1] ) ) + self.src_proj_b
             
             # for step in range( self.src_max_size ):
             #     # reuse variables for each encoding step
@@ -130,20 +118,33 @@ class TF_Model( object ):
             #     h_s.append( e_output )
             # the final hidden state of the encoder
 
-	        # self.e_hidden = e_state
-	        # self.h_s = tf.stack( h_s )
+            # self.e_hidden = e_state
+            # self.h_s = tf.stack( h_s )
 
-	        # hs shape( seq_len, batch_size, hidden_size )
-	        self.h_s, self.e_hidden = tf.nn.dynamic_rnn( self.encoder, source_xs, time_major = True, dtype=tf.float32 )
+            # hs shape( seq_len, batch_size, hidden_size )
+            self.h_s, self.e_hidden = tf.nn.dynamic_rnn( self.encoder, source_xs, time_major = True, dtype=tf.float32 )
 
 
         # this is TODO, should we have zero initial?
         d_state = self.e_hidden
+        # move construct decoder here since it requires encoder output 
         with tf.variable_scope( "decoder" ) as scope:
+            layers = []
+            for i in range( self.num_layers - 1 ):
+                layer = rnn.LSTMCell( self.hidden_size, state_is_tuple = True, reuse = tf.AUTO_REUSE )
+                layer = rnn.DropoutWrapper( layer, output_keep_prob = ( 1 - self.dropout_rate ) )
+                layers.append( layer )
+            atten_cell = rnn.LSTMCell( self.hidden_size, state_is_tuple = True )
+            self.atten_mech = tf.contrib.seq2seq.LuongAttention( self.tar_max_size, tf.reshape( self.e_hidden, [ self.batch_size, self.src_max_size, self.embed_size ] ) )
+            atten_cell = tf.contrib.seq2seq.AttentionWrapper( atten_cell, self.atten_mech, attention_size = self.hidden_size )
+            atten_cell = rnn.DropoutWrapper( atten_cell, output_keep_prob = ( 1 - self.dropout_rate ) )
+            layers.append( atten_cell )
+            self.decoder = rnn.MultiRNNCell( layers, state_is_tuple = True )
+
             target_xs = tf.nn.embedding_lookup( self.tar_embed_matrix, self.tar_input )
             # target_xs = tf.split( 1, self.tar_max_size, target_xs )
             target_xs = tf.reshape( target_xs, [ self.tar_max_size, self.batch_size, self.embed_size ] )
-			target_xs = tf.matmul( target_xs, self.proj_w ) + self.proj_b
+            target_xs = tf.matmul( target_xs, self.proj_w ) + self.proj_b
         #     logit_list, prob_list = [], []
         #     for step in range( self.tar_max_size ):
         #         # reuse variables for each encoding step
@@ -166,7 +167,7 @@ class TF_Model( object ):
         # get rid of begining of the sentence? TODO
         # convert target into one hot labels to do softmax loss
         self.train_logit, self.train_d_hidden = tf.nn.dynamic_rnn( self.decoder, target_xs, time_major = False,
-        	                                                  initial_state = self.e_hidden, dtype=tf.float32 )
+                                                              initial_state = self.e_hidden, dtype=tf.float32 )
         tar = tf.one_hot( self.tar_input, self.tar_maxval )
         # soft max cross entropy loss
         self.train_logit = tf.matmul( self.train_logit, self.proj_wo ) + self.proj_bo
