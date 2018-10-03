@@ -182,6 +182,7 @@ class NMT(object):
         """
         if USE_TF:
             print( "this is not implemented" )
+            scores = 0
         else:
             scores = 0
             true_indices, _ = self.embed( tgt_sents )
