@@ -115,10 +115,10 @@ class TF_Model( object ):
         with tf.variable_scope( "encoder", reuse = True ) as scope:
             source_xs = tf.nn.embedding_lookup( self.src_embed_matrix, self.src_input )
             # source_xs = tf.split( source_xs, self.src_max_size, 1 )
-            source_xs = tf.matmul( x, self.src_proj_w ) + self.src_proj_b
-
             source_xs = tf.reshape( source_xs, [self.src_max_size, self.batch_size, self.embed_size ] )
-            # ( src_max_size, batch_size, embed_size )
+            # ( src_max_size, batch_size, hidden_size )
+            source_xs = tf.matmul( x, self.src_proj_w ) + self.src_proj_b
+            
             # for step in range( self.src_max_size ):
             #     # reuse variables for each encoding step
             #     if step > 0: tf.get_variable_scope().reuse_variables()
@@ -142,8 +142,8 @@ class TF_Model( object ):
         with tf.variable_scope( "decoder" ) as scope:
             target_xs = tf.nn.embedding_lookup( self.tar_embed_matrix, self.tar_input )
             # target_xs = tf.split( 1, self.tar_max_size, target_xs )
-            target_xs = tf.matmul( self.tar_input )
             target_xs = tf.reshape( target_xs, [ self.tar_max_size, self.batch_size, self.embed_size ] )
+			target_xs = tf.matmul( target_xs, self.proj_w ) + self.proj_b
         #     logit_list, prob_list = [], []
         #     for step in range( self.tar_max_size ):
         #         # reuse variables for each encoding step
@@ -165,14 +165,13 @@ class TF_Model( object ):
         # logit_list = tf.stack( logit_list )
         # get rid of begining of the sentence? TODO
         # convert target into one hot labels to do softmax loss
-        self.train_decode, self.e_hidden = tf.nn.dynamic_rnn( self.decoder, target_xs, time_major = True,
+        self.train_logit, self.train_d_hidden = tf.nn.dynamic_rnn( self.decoder, target_xs, time_major = False,
         	                                                  initial_state = self.e_hidden, dtype=tf.float32 )
         tar = tf.one_hot( self.tar_input, self.tar_maxval )
-        tar = tf.reshape( tar, [ self.tar_max_size, self.batch_size, self.tar_maxval ] )
         # soft max cross entropy loss
-        self.loss  = tf.reduce_sum( tf.nn.softmax_cross_entropy_with_logits_v2( labels = tar, logits = logit_list ) )
+        self.train_logit = tf.matmul( self.train_logit, self.proj_wo ) + self.proj_bo
+        self.loss  = tf.reduce_mean( tf.nn.softmax_cross_entropy_with_logits_v2( labels = tar, logits = self.train_logit ) )
         # ( batch_size, sentence_len, prob embed )
-        self.probs = tf.transpose( tf.stack( prob_list ), [ 1, 0, 2 ] )
         self.optimizer = tf.train.GradientDescentOptimizer( self.lr ).minimize( self.loss )
 
         # construct sampling decoder:
