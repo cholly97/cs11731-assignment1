@@ -178,16 +178,24 @@ class TF_Model( object ):
         # construct sampling decoder:
 
         with tf.variable_scope( "decoder", reuse = True ):
-            tar_sample = tf.nn.embedding_lookup( self.tar_embed_matrix, self.tar_sample )
-            tar_sample = tf.reshape( tar_sample, [ self.batch_size, self.embed_size ] )
-            tar_sample = tf.matmul( tar_sample, self.tar_proj_w ) + self.tar_proj_b
-            h_t, d_state = self.decoder( tar_sample, ( self.tar_prev_state_c, self.tar_prev_state_m ) )
-            h_t_telda = self.attention( h_t, self.h_s )
+            # tar_sample = tf.nn.embedding_lookup( self.tar_embed_matrix, self.tar_sample )
+            # tar_sample = tf.reshape( tar_sample, [ self.batch_size, self.embed_size ] )
+            # tar_sample = tf.matmul( tar_sample, self.tar_proj_w ) + self.tar_proj_b
+            # h_t, d_state = self.decoder( tar_sample, ( self.tar_prev_state_c, self.tar_prev_state_m ) )
+            # h_t_telda = self.attention( h_t, self.h_s )
+            #
+            # output_embed = tf.matmul( h_t_telda, self.proj_w ) + self.proj_b
+            # logit = tf.matmul( output_embed, self.proj_wo ) + self.proj_bo
+            # self.prob_sample = tf.nn.softmax( logit )
+            # self.d_state_sample = d_state
+            self.beam_search_decoder = tf.contrib.seq2seq.BeamSearchDecoder(
+                cell = self.decoder, embedding = self.tar_embed_matrix,
+                start_tokens = tf.fill( [ self.batch_size ], 1 ), end_token = 2,
+                initial_state = self.e_hidden , beam_width = 5 )
+            output, _, _ = tf.contrib.seq2seq.dynamic_decode(
+                self.beam_search_decoder, maximum_iterations = 70 )
+            sample_translation = output.predicted_ids
 
-            output_embed = tf.matmul( h_t_telda, self.proj_w ) + self.proj_b
-            logit = tf.matmul( output_embed, self.proj_wo ) + self.proj_bo
-            self.prob_sample = tf.nn.softmax( logit )
-            self.d_state_sample = d_state
 
 
     def attention( self, h_t, h_s ):
