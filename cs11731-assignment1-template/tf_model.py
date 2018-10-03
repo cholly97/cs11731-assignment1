@@ -7,19 +7,23 @@ import time
 from globals import *
 from tf_utils import *
 
+class BaselineAttentionCell( rnn.LSTMCell ):
+	def __init__( self, hidden_size ):
+		pass
+
 # tensorflow implementation of the hw1 reference paper https://arxiv.org/pdf/1508.04025.pdf
 # some details of implementation borrows from https://pytorch.org/tutorials/intermediate/seq2seq_translation_tutorial.html
 class TF_Model( object ):
 
-    def __init__( self, batch_size, embed_size, hidden_size, lr, lr_decay, dropout_rate=0.2,
-                  initializer = tf.random_uniform_initializer( -1.0, 1.0 ), teacher_sup = False ):
+    def __init__( self, batch_size, embed_size, hidden_size, lr, lr_decay, dropout_rate=0.2, num_layers = 2,
+                  initializer = tf.random_uniform_initializer( -1.0, 1.0 ), teacher_sup = True ):
 
         self.sess = None
         self.batch_size = batch_size
         self.embed_size = embed_size
         self.hidden_size = hidden_size
         self.dropout_rate = dropout_rate
-        self.num_layers = opts.num_layers
+        self.num_layers = num_layers
         self.src_max_size = SRC_MAX_SIZE
         self.tar_max_size = TAR_MAX_SIZE
         self.src_minval = SRC_MIN_VOCAB_VAL
@@ -49,8 +53,6 @@ class TF_Model( object ):
         self.build_graph()
         self.saver = tf.train.Saver()
 
-
-
     def build_projection( self ):
         with tf.variable_scope( "encoder" ) as scope:
 
@@ -62,24 +64,26 @@ class TF_Model( object ):
             # input projection
             self.tar_embed_matrix = tf.get_variable( "tar_embed_matrix", shape=[ self.tar_maxval, self.embed_size ], initializer = self.initializer )
             self.tar_proj_w = tf.get_variable( "tar_proj_w", shape=[ self.embed_size, self.hidden_size], initializer = self.initializer )
-            self.t_proj_b = tf.get_variable( "tar_proj_b", shape=[ self.hidden_size ], initializer = self.initializer )
+            self.tar_proj_b = tf.get_variable( "tar_proj_b", shape=[ self.hidden_size ], initializer = self.initializer )
             # output projection TODO
             self.proj_w = tf.get_variable( "proj_w", shape = [ self.hidden_size, self.embed_size ], initializer = self.initializer )
             self.proj_b = tf.get_variable( "b", shape = [ self.embed_size ], initializer = self.initializer )
             self.proj_wo = tf.get_variable("proj_wo", shape = [ self.embed_size, self.tar_maxval ], initializer = self.initializer )
-            self.proj_bo = tf.get_variable( "proj_bo", shape = [ self.tar_maxval ], initializer = initializer )
+            self.proj_bo = tf.get_variable( "proj_bo", shape = [ self.tar_maxval ], initializer = self.initializer )
 
     def construct_input( self ):
         self.src_input = tf.placeholder( tf.int32, [ self.batch_size, self.src_max_size ], name = "src_input" )
         self.tar_input = tf.placeholder( tf.int32, [ self.batch_size, self.tar_max_size ], name = "tar_input" )
         # sample should always just provide begining of the word
-        self.tar_sample = tf.placeholder( tf.float32, [ 1, self.batch_size ] )
-        self.tar_prev_state = tf.place_holder( tf.float32, [  ] )
-        self.lr = tf.placeholder( tf.float32, [1], name = "lr" )
+        self.tar_sample = tf.placeholder( tf.int32, [ 1, self.batch_size ] )
+        self.tar_prev_state_c = tf.placeholder( tf.float32, [ self.batch_size, self.hidden_size ] )
+        self.tar_prev_state_m = tf.placeholder( tf.float32, [ self.batch_size, self.hidden_size ] )
+        self.h_s_sample = tf.placeholder( tf.float32, [ self.src_max_size, self.batch_size, self.hidden_size ] )
+        self.lr = tf.placeholder( tf.float32, [], name = "lr" )
 
     def build_attention( self ):
         with tf.variable_scope( "decoder" ) as scope:
-            self.w_c = tf.get_variable( "w_c", shape = [ 2 * self.hidden_size, self.hidden_size ], initializer = initializer )
+            self.w_c = tf.get_variable( "w_c", shape = [ 2 * self.hidden_size, self.hidden_size ], initializer = self.initializer )
             self.b_c = tf.get_variable( "b_c", shape = [ self.hidden_size ], initializer = self.initializer )
             if self.attention_type == 'dot':
                 pass
@@ -120,9 +124,12 @@ class TF_Model( object ):
                 # x: ( batch_size, hidden size )
                 e_output, e_state = self.encoder( x, e_state )
                 h_s.append( e_output )
-        h_s = tf.pack( h_s )
+            # the final hidden state of the encoder
+        self.e_hidden = e_state
+        self.h_s = tf.stack( h_s )
 
-        # this is TODO
+
+        # this is TODO, should we have zero initial?
         d_state = self.decoder.zero_state( self.batch_size, tf.float32 )
         d_state = e_state
         with tf.variable_scope( "decoder" ) as scope:
@@ -138,38 +145,39 @@ class TF_Model( object ):
                 x = target_xs[ step ]
                 x = tf.matmul( x, self.tar_proj_w ) + self.tar_proj_b
                 h_t, d_state = self.decoder( x, d_state )
-                h_t_telda = self.attention( h_t, h_s )
+                h_t_telda = self.attention( h_t, self.h_s )
 
                 output_embed = tf.matmul( h_t_telda, self.proj_w ) + self.proj_b
                 logit = tf.matmul( output_embed, self.proj_wo ) + self.proj_bo
                 logit_list.append( logit )
                 prob  = tf.nn.softmax( logit )
                 prob_list.append( prob )
-        # get rid of the end of sentence mark TODO
-        logit_list = logit_list[ : -1 ]
-        logit_list = tf.pack( logit_list )
-        # get rid of begining of the sentence TODO
+        # get rid of the end of sentence mark? TODO
+        logit_list = logit_list
+        logit_list = tf.stack( logit_list )
+        # get rid of begining of the sentence? TODO
+        # convert target into one hot labels to do softmax loss
         tar = tf.one_hot( self.tar_input, self.tar_maxval )
-        tar = tf.reshape( tar, [ self.tar_max_size, self.batch_size, self.tar_maxval ] )[ 1:, : ]
-        self.loss  = tf.softmax_cross_entropy_with_logits_v2( labels = tar, logits = logit_list )
+        tar = tf.reshape( tar, [ self.tar_max_size, self.batch_size, self.tar_maxval ] )
+        # soft max cross entropy loss
+        self.loss  = tf.reduce_sum( tf.nn.softmax_cross_entropy_with_logits_v2( labels = tar, logits = logit_list ) )
         # ( batch_size, sentence_len, prob embed )
-        self.probs = tf.transpose( tf.pack( probs ), [ 1, 0, 2 ] )
+        self.probs = tf.transpose( tf.stack( prob_list ), [ 1, 0, 2 ] )
         self.optimizer = tf.train.GradientDescentOptimizer( self.lr ).minimize( self.loss )
 
         # construct sampling decoder:
-        tar_sample = tf.nn.embedding_lookup( self.tar_embed_matrix, self.tar_sample )
-        with tf.variable_scope(  )
+
+        with tf.variable_scope( "decoder", reuse = True ):
+            tar_sample = tf.nn.embedding_lookup( self.tar_embed_matrix, self.tar_sample )
+            tar_sample = tf.reshape( tar_sample, [ self.batch_size, self.embed_size ] )
             tar_sample = tf.matmul( tar_sample, self.tar_proj_w ) + self.tar_proj_b
-            h_t, d_state = self.decoder( x, d_state )
-            h_t_telda = self.attention( h_t, h_s )
+            h_t, d_state = self.decoder( tar_sample, ( self.tar_prev_state_c, self.tar_prev_state_m ) )
+            h_t_telda = self.attention( h_t, self.h_s )
 
             output_embed = tf.matmul( h_t_telda, self.proj_w ) + self.proj_b
             logit = tf.matmul( output_embed, self.proj_wo ) + self.proj_bo
-            prob = tf.nn.softmax( logit )
-            indice = tf.argmax( prob, axis = 1 )
-            tar_sample = tf.nn.embedding_lookup( self.tar_embed_matrix, indice )
-
-
+            self.prob_sample = tf.nn.softmax( logit )
+            self.d_state_sample = d_state
 
 
     def attention( self, h_t, h_s ):
@@ -177,9 +185,9 @@ class TF_Model( object ):
         scores = self.score( h_t, h_s )
         a_t = tf.nn.softmax( tf.transpose( scores ) )
         a_t = tf.expand_dims( a_t, 2 )
-        c_t = tf.batch_matmul( tf.transpose( h_, perm=[ 1,2,0 ] ), a_t )
+        c_t = tf.matmul( tf.transpose( h_s, perm=[ 1,2,0 ] ), a_t )
         c_t = tf.squeeze( c_t, [ 2 ] )
-        h_t_tenda = tf.tanh( tf.matmul( tf.concat( [h_t, c_t], axis = 1 ), self.w_c ) + self.b_c )
+        h_t_telda = tf.tanh( tf.matmul( tf.concat( [h_t, c_t], axis = 1 ), self.w_c ) + self.b_c )
 
         return h_t_telda
 
@@ -203,5 +211,19 @@ class TF_Model( object ):
                                                 self.lr: lr } )
         return loss
 
-    def sample( self, src_batch ):
-        prob = self.sess.run(  )
+    def encode_src( self, src_batch ):
+        e_hidden, h_s = self.sess.run( [ self.e_hidden, self.h_s ], feed_dict = {
+                                                        self.src_input: src_batch
+         } )
+        return e_hidden, h_s
+
+
+    def decode_one_step( self, d_hidden, d_prev_word, h_s ):
+        prob, d_hidden = self.sess.run( [ self.prob_sample, self.d_state_sample ],
+                                feed_dict = {
+                                    self.h_s_sample: h_s,
+                                    self.tar_sample: d_prev_word,
+                                    self.tar_prev_state_c: d_hidden[ 0 ],
+                                    self.tar_prev_state_m: d_hidden[ 1 ]
+                                } )
+        return prob, d_hidden
