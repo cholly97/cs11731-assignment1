@@ -67,6 +67,21 @@ else:
 
 Hypothesis = namedtuple('Hypothesis', ['value', 'score'])
 
+class Hypothesis_(object):
+    def __init__(self, d_hidden, indices = [1], score = 0.): # 1 is the index of '<s>'
+        self.d_hidden = d_hidden
+        self.indices = indices
+        self.score = score
+        self.complete = self.indices[-1] != 2 # 2 is the index of '</s>'
+
+    def indices_to_words(self, id2word):
+        return Hypothesis([id2word[i] for i in self.indices], self.score)
+
+class Hypothesis(object):
+    def __init__(self, value, score):
+        self.value = value
+        self.score = score
+
 class NMT(object):
 
     def __init__(self, embed_size, hidden_size, vocab, batch_size = 64, lr = 1e-4, lr_decay = 0.2, dropout_rate=0):
@@ -289,21 +304,6 @@ class NMT(object):
             prob_list, _, d_hidden, context = self.decoder( d_prev_word_batch, d_hidden, last_context, encoder_output )
         return d_hidden, prob_list, context
 
-    class Hypothesis_(object):
-        def __init__(self, d_hidden, indices = [1], score = 0.): # 1 is the index of '<s>'
-            self.d_hidden = d_hidden
-            self.indices = indices
-            self.score = score
-            self.complete = self.indices[-1] != 2 # 2 is the index of '</s>'
-
-        def indices_to_words(self, id2word):
-            return Hypothesis([id2word[i] for i in self.indices], self.score)
-
-    class Hypothesis(object):
-        def __init__(self, value, score):
-            self.value = value
-            self.score = score
-
     def new_hypotheses(self, hypotheses, beam_size, last_context, encoder_output):
         complete, incomplete = [], []
         for hypothesis in hypotheses:
@@ -359,8 +359,8 @@ class NMT(object):
                 score: float: the log-likelihood of the target sentence
         """
 
-        src_encodings, decoder_init_state, encoder_output = encode([src_sent])
-        context = self.decoder.decoder_context_init( decoder_init_state )
+        src_encodings, decoder_init_state, encoder_output = self.encode([src_sent])
+        context = torch.zeros( 3,2 ).cuda()
         time = 0
         hypotheses = [Hypothesis_(decoder_init_state) for _ in range(beam_size)]
         while(not all(hypothesis.complete for hypothesis in hypotheses)
@@ -410,10 +410,14 @@ class NMT(object):
         """
         if os.path.isfile( model_path ):
             cpt = torch.load( model_path )
-            self.encoder.load_state_dict( cpt[ "encoder_state" ] )
-            self.decoder.load_state_dict( cpt[ "decoder_state" ] )
-            self.encoder_optim.load_state_dict( cpt[ "encoder_optim_state" ] )
-            self.decoder_optim.load_state_dict( cpt[ "decoder_optim_state" ] )
+            model = NMT(embed_size=256,
+                        hidden_size=256,
+                        dropout_rate=0.2,
+                        vocab=pickle.load(open("data/vocab.bin", "rb")))
+            model.encoder.load_state_dict( cpt[ "encoder_state" ] )
+            model.decoder.load_state_dict( cpt[ "decoder_state" ] )
+            model.encoder_optim.load_state_dict( cpt[ "encoder_optim_state" ] )
+            model.decoder_optim.load_state_dict( cpt[ "decoder_optim_state" ] )
         else:
             print( "No checkpoint found in {}".format( model_path ) )
 
@@ -428,7 +432,9 @@ class NMT(object):
         cpt[ "decoder_state" ] = self.decoder.state_dict()
         cpt[ "encoder_optim_state" ] = self.encoder_optim.state_dict()
         cpt[ "decoder_optim_state" ] = self.decoder_optim.state_dict()
-
+        cpt[ "vocab_path" ] = "data/vocab.bin"
+        cpt[ "hidden_size" ] = self.hidden_size
+        cpt[ "embed_size" ] = self.embed_size
         torch.save( cpt, path )
 
 
@@ -581,7 +587,7 @@ def train(args: Dict[str, str]):
 
 
 def beam_search(model: NMT, test_data_src: List[List[str]], beam_size: int, max_decoding_time_step: int) -> List[List[Hypothesis]]:
-    was_training = model.training
+    # was_training = model.training
 
     hypotheses = []
     for src_sent in tqdm(test_data_src, desc='Decoding', file=sys.stdout):

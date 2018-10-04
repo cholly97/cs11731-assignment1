@@ -22,6 +22,7 @@ def input_transpose(sents, pad_token):
 
 def read_corpus(file_path, source):
     data = []
+    print( "reading: ", file_path )
     for line in open(file_path, encoding = "utf-8" ):
         sent = line.strip().split(' ')
         # only append <s> and </s> to the target sentence
