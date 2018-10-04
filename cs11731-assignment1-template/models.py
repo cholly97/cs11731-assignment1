@@ -118,7 +118,7 @@ class Attention(nn.Module):
 class UnidirectionalGRUEncoder( nn.Module ):
 
     def __init__( self, input_size, hidden_size, num_layer, src_vocab_size, dropout ):
-        super( BidirectionalGRUEncoder, self ).__init__()
+        super( UnidirectionalGRUEncoder, self ).__init__()
         self.input_size = input_size
         self.hidden_size = hidden_size
         self.dropout = dropout
