@@ -311,7 +311,7 @@ class NMT(object):
             partition.append(hypothesis)
         complete_len = len(complete)
 
-        pad_size = batch_size - complete_len
+        pad_size = self.batch_size - complete_len
         d_hidden = np.pad(
             [hypothesis.d_hidden for hypothesis in incomplete],
             ((0, pad_size), (0, 0)),
@@ -330,12 +330,12 @@ class NMT(object):
         new_hypotheses = []
         V = len(self.vocab.tgt)
         for index in top_indices:
-            complete_idx = index - V * completed_len
+            complete_idx = index - V * complete_len
             if complete_idx < 0:
                 hyp_idx, word_idx = divmod(index, V)
                 new_hypothesis = Hypothesis_(
                     d_hidden[hyp_idx],
-                    completed[hyp_idx].indices + [index % V],
+                    complete[hyp_idx].indices + [word_idx],
                     all_probs[index])
             else:
                 new_hypothesis = complete[complete_idx]

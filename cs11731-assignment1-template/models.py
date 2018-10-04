@@ -110,7 +110,7 @@ class Attention(nn.Module):
 
     def _score(self, hidden, encoder_output):
         """Calculate the relevance of a particular encoder output in respect to the decoder hidden."""
-
+        
         if self.method == 'dot':
             energy = hidden.dot(encoder_output)
         elif self.method == 'general':
