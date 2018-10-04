@@ -304,7 +304,7 @@ class NMT(object):
         if USE_TF:
             prob_list, d_hidden = self.tf_model.decode_one_step( d_hidden, d_prev_word_batch, self.h_s )
         else:
-            prob_list, _, d_hidden, context = self.decoder( d_prev_word_batch, d_hidden, last_context, encoder_output )
+            prob_list, _, d_hidden, context = self.decoder( d_prev_word_batch, d_hidden,batch_size, last_context, encoder_output )
         return d_hidden, prob_list, context
 
     def new_hypotheses(self, hypotheses, beam_size, last_context, encoder_output):
@@ -355,17 +355,17 @@ class NMT(object):
         decode_array = []
         d_hidden = src_encodings
         decoder_init_state = decoder_init_state.reshape( (1,1) )
-        d_hidden, prob_list, context = self.decode_one_step( decoder_init_state,d_hidden, 1, context, encoder_output = encoder_output)
+        d_hidden, prob_list, context = self.decode_one_step( d_hidden, decoder_init_state, context, encoder_output = encoder_output)
         _, index = torch.topk( prob_list, 1 )
         decode_array.append( index.cpu().item() )
         while index != 2 and time < max_decoding_time_step:
 
             d_prev_word_batch = torch.tensor( index ).reshape( (1,1 ) ).cuda()
-            d_hidden, prob_list, context = self.decode_one_step(d_hidden, d_prev_word_batch,1, context, encoder_output = encoder_output)
+            d_hidden, prob_list, context = self.decode_one_step(d_hidden, d_prev_word_batch, context, encoder_output = encoder_output)
             _, index = torch.topk( prob_list, 1 )
             decode_array.append( index.cpu().item() )
             time += 1
-        res =  [ self.vocab.tgt.id2word( i ) for i in decode_array ]
+        res =  [ self.vocab.tgt.id2word[ i ] for i in decode_array ]
         print("res", res )
         return [res]
 
