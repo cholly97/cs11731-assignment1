@@ -82,9 +82,9 @@ class Attention(nn.Module):
 
         # Define layers
         if self.method == 'general':
-            self.attention = nn.Linear(self.hidden_size, self.hidden_size)
+            self.attention = nn.Linear(self.hidden_size, self.hidden_size, bias = False)
         elif self.method == 'concat':
-            self.attention = nn.Linear(self.hidden_size * 2, self.hidden_size)
+            self.attention = nn.Linear(self.hidden_size * 2, self.hidden_size, bias = False)
             self.other = nn.Parameter(torch.FloatTensor(1, self.hidden_size))
 
 
@@ -110,7 +110,7 @@ class Attention(nn.Module):
 
     def _score(self, hidden, encoder_output):
         """Calculate the relevance of a particular encoder output in respect to the decoder hidden."""
-
+        
         if self.method == 'dot':
             energy = hidden.dot(encoder_output)
         elif self.method == 'general':
