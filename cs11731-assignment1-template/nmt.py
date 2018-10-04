@@ -174,13 +174,13 @@ class NMT(object):
             src_var = torch.tensor( src_var )
             [ batch_size, sentence_len ] = src_var.size()
 
-            src_var = torch.reshape( src_var, ( sentence_len, batch_size ) )
+            src_var = torch.transpose( src_var, 0, 1 ) # ( sentence_len, batch_size )
             # print("encode sentence len {}".format( sentence_len ) )
             if USE_CUDA: src_var = src_var.cuda()
             encoder_output, e_hidden = self.encoder( src_var, None, batch_size )
 
-            e_0s = self.vocab.tgt.words2indices( [ [ '<s>' ] for i in range( batch_size ) ] )
-            e_0s =  torch.tensor( e_0s ).view( 1, batch_size ).cuda()
+            e_0s = self.vocab.tgt.words2indices( [ [ '<s>' for i in range( batch_size ) ] ] )
+            e_0s =  torch.tensor( e_0s ).cuda()
             decoder_input = e_0s
             decoder_hidden = e_hidden
             # print( "e_0s shape", e_0s.size() )  
@@ -214,7 +214,7 @@ class NMT(object):
             tar_var = torch.tensor( tar_var )
             [ batch_size, sentence_len ] = tar_var.size()
             # print( "decode sentence len {}".format( sentence_len ) )
-            tar_var = tar_var.view( sentence_len, batch_size )
+            tar_var = torch.transpose( tar_var, 0, 1 ) # ( sentence_len, batch_size )
             d_hidden = src_encodings
             d_input = decoder_init_state.cuda() if USE_CUDA else decoder_init_state
             context = self.decoder.decoder_context_init( decoder_init_state )
