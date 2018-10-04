@@ -9,7 +9,7 @@ import torch
 import torch.nn as nn
 from torch import optim
 import torch.nn.functional as F
-
+from torch.autograd import Variable as Variable
 # Borrow from PYTORCH tutorial as this is a easy way to do things in cuda
 DEVICE = torch.device( "cuda" if torch.cuda.is_available() else "cpu" )
 USE_CUDA = True
@@ -91,9 +91,9 @@ class Attention(nn.Module):
         Returns:
              Normalized (0..1) energy values, re-sized to 1 x 1 x seq_len
         """
-        [ _, batch_size, _ ] = hiden.size()
+        [ _, batch_size, _ ] = hidden.size()
         seq_len = len(encoder_outputs)
-        energies = Variable(torch.zeros((seq_len, batch_size)).cuda()
+        energies = Variable(torch.zeros((seq_len, batch_size)) ).cuda()
         for i in range(seq_len):
             energies[i] = self._score(hidden, encoder_outputs[i])
         return F.softmax(energies, dim = 0)
@@ -118,19 +118,18 @@ class Attention(nn.Module):
 
 class BidirectionalGRUEncoder( nn.Module ):
 
-    def __init__( self, input_size, hidden_size, num_layer, src_vocal_size, dropout ):
+    def __init__( self, input_size, hidden_size, num_layer, src_vocab_size, dropout ):
         super( BidirectionalGRUEncoder, self ).__init__()
         self.input_size = input_size
         self.hidden_size = hidden_size
         self.dropout = dropout
         self.num_layer = num_layer
         self.src_vocab_size = src_vocab_size
-        self.embedder = nn.Embedding( src_vocal_size , input_size )
+        self.embedder = nn.Embedding( src_vocab_size , input_size )
         self.encoder = nn.GRU( input_size, hidden_size, num_layers = num_layer, bidirectional = True, dropout = dropout )
-        self.hidden_state_combine_linear( 2*num_layer * self.hidden_size, self.hidden_size )
-        self.leaky_relu = F.leaky_relu( 0.2 )
+        self.hidden_state_combine_linear = nn.Linear( 2*num_layer * self.hidden_size, self.hidden_size )
 
-        self.output_combine_linear( 2*num_layer * self.hidden_size, self.hidden_size )
+        self.output_combine_linear = nn.Linear( 2*num_layer * self.hidden_size, self.hidden_size )
 
 
     def forward( self, embedded_input, hidden, batch_size ):
@@ -142,16 +141,16 @@ class BidirectionalGRUEncoder( nn.Module ):
             # print( "Finish Encoder Layer {}".format( l ) )
             # print( "Output size: {} hidden size: {}".format( output.size(), hidden.size() ) )
         # concat the hidden layers of both direction together and reduce dimension
-        hidden = torch.cat( [ hidden[i] for i in range( self.num_layer 2 ) ], dim = 1  )
+        hidden = torch.cat( [ hidden[i] for i in range( self.num_layer * 2) ], dim = 1  )
         hidden = self.hidden_state_combine_linear( hidden )
-        hidden = self.leaky_relu( hidden )
+        hidden = F.leaky_relu( hidden )
         hidden = torch.reshape( hidden, ( 1, batch_size, self.hidden_size ) )
         output = self.output_combine_linear( output )
         return output, hidden
 
 class AtttentGRUDecoder( nn.Module ):
-    def __init__( self, input_size, hidden_size, num_layer, tar_vocab_size, dropout, attention_node ):
-        super( BaselineGRUDecoder, self ).__init__()
+    def __init__( self, input_size, hidden_size, num_layer, tar_vocab_size, dropout, attention_mode ):
+        super( AtttentGRUDecoder, self ).__init__()
         self.input_size = input_size
         self.num_layer = num_layer
         self.inut_size = input_size
@@ -162,7 +161,7 @@ class AtttentGRUDecoder( nn.Module ):
         self.decoder = nn.GRU( input_size, hidden_size, num_layers = num_layer, dropout = dropout )
         self.out = nn.Linear( hidden_size + input_size, tar_vocab_size )
         self.softmax = nn.LogSoftmax( dim=1 )
-        self.attention( self.hidden_size, method = attention_mode )
+        self.attention = Attention( self.hidden_size, method = attention_mode )
 
     def decoder_context_init( self, inputs ):
         [ _, batch_size ] = inputs.size()
@@ -173,14 +172,16 @@ class AtttentGRUDecoder( nn.Module ):
         seq_len, _, e_hidden_size = encoder_output.size()
         # inputs = inputs.view( 1, batch_size, self.input_size )
         # inputs = inputs.view( batch_size, self.input_size )
-        last_context = last_context.view( ( 1, batch_size, self.hidden_size ) )
+        # last_context = last_context.view( ( 1, batch_size, self.hidden_size ) )
         # print( "decoder true input size", self.input_size, self.hidden_size  )
         # print( "output size :", output.size() )
         # print( "Hidden size", hidden.size() )
         output, hidden = self.decoder( inputs, hidden )
 
         attention_weights = torch.reshape( self.attention( output, encoder_output ), ( batch_size, 1, seq_len ) )
-        context = torch.bmm( attention_weights, encoder_outputs.reshape( batch_size, seq_len, e_hidden_size ) )
-        context = context.reshape( 1, batch_size, hidden_size )
-        output = self.softmax( F.relu( self.out( output[ 0 ] ) ) )
+        context = torch.bmm( attention_weights, encoder_output.reshape( batch_size, seq_len, e_hidden_size ) )
+        context = context.reshape( 1, batch_size, e_hidden_size )
+        output = torch.cat( ( output, context ), 2 )
+        output_logits = F.relu( self.out( output[ 0 ] ) )
+        output = self.softmax( output_logits )
         return output, output_logits, hidden, context

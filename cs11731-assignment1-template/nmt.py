@@ -69,7 +69,7 @@ Hypothesis = namedtuple('Hypothesis', ['value', 'score'])
 
 class NMT(object):
 
-    def __init__(self, embed_size, hidden_size, vocab, batch_size = 64, lr = 1e-4, lr_decay = 0.2, dropout_rate=0.2):
+    def __init__(self, embed_size, hidden_size, vocab, batch_size = 64, lr = 1e-4, lr_decay = 0.2, dropout_rate=0):
         super(NMT, self).__init__()
 
         self.embed_size = embed_size
@@ -98,7 +98,7 @@ class NMT(object):
 
             # create weight for the loss function on tar side to mask out <pad>
             weight = np.ones( self.tar_vocab_size )
-            weight = torch.tensor( weight, dtype = torch.float )
+            weight = torch.tensor( weight, dtype = torch.float ).cuda()
             self.loss = nn.CrossEntropyLoss( weight = weight )
 
     def __call__( self, src_sents , tgt_sents, lr = 1e-4 ):
@@ -162,7 +162,7 @@ class NMT(object):
             encoder_output, e_hidden = self.encoder( src_var, None, batch_size )
 
             e_0s = self.vocab.tgt.words2indices( [ [ '<s>' ] for i in range( batch_size ) ] )
-            e_0s = self.tar_embedder( torch.tensor( e_0s ).view( 1, batch_size ) )
+            e_0s =  torch.tensor( e_0s ).view( 1, batch_size ).cuda()
             decoder_input = e_0s
             decoder_hidden = e_hidden
             # print( "e_0s shape", e_0s.size() )  
@@ -204,10 +204,11 @@ class NMT(object):
                 # print( "D_i reach {}, with d_input dim {}".format( d_i, d_input.size() ) )
                 d_out, d_out_logit, d_hidden, context = self.decoder( d_input, d_hidden, batch_size, encoder_output, context )
                 d_input = tar_var[ d_i ]
+                if USE_CUDA: d_input = d_input.cuda()
                 scores += self.loss( d_out_logit, d_input )
                 # d_input = self.tar_embedder( topi.type( torch.LongTensor ) ).view( 1, batch_size, self.embed_size )
 
-                if USE_CUDA: d_input = d_input.cuda()
+                
             # print( "Exit decode" )
         return scores
     # begin yingjinl
