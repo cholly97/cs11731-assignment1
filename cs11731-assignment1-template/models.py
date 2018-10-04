@@ -169,7 +169,7 @@ class BidirectionalGRUEncoder( nn.Module ):
         # concat the hidden layers of both direction together and reduce dimension
         hidden = torch.cat( [ hidden[i] for i in range( self.num_layer * 2) ], dim = 1  )
         hidden = self.hidden_state_combine_linear( hidden )
-        hidden = F.leaky_relu( hidden )
+        # hidden = F.leaky_relu( hidden )
         hidden = torch.reshape( hidden, ( 1, batch_size, self.hidden_size ) )
         output = self.output_combine_linear( output )
         return output, hidden
@@ -208,6 +208,6 @@ class AtttentGRUDecoder( nn.Module ):
         context = torch.bmm( attention_weights, encoder_output.reshape( batch_size, seq_len, e_hidden_size ) )
         context = context.reshape( 1, batch_size, e_hidden_size )
         output = torch.cat( ( output, context ), 2 )
-        output_logits = F.relu( self.out( output[ 0 ] ) )
+        output_logits = self.out( output[ 0 ] )
         output = self.softmax( output_logits )
         return output, output_logits, hidden, context

@@ -108,9 +108,9 @@ class NMT(object):
             self.encoder.to( DEVICE )
             self.decoder.to( DEVICE )
             self.lr = 1e-4
-            self.encoder_optim = optim.SGD( filter( lambda x: x.requires_grad, self.encoder.parameters() ),
+            self.encoder_optim = optim.Adam( filter( lambda x: x.requires_grad, self.encoder.parameters() ),
                                     lr=self.lr )
-            self.decoder_optim = optim.SGD( filter( lambda x: x.requires_grad, self.decoder.parameters() ),
+            self.decoder_optim = optim.Adam( filter( lambda x: x.requires_grad, self.decoder.parameters() ),
                                     lr=self.lr )
 
             # create weight for the loss function on tar side to mask out <pad>
@@ -218,11 +218,12 @@ class NMT(object):
             d_hidden = src_encodings
             d_input = decoder_init_state.cuda() if USE_CUDA else decoder_init_state
             context = self.decoder.decoder_context_init( decoder_init_state )
-            for d_i in range( sentence_len ):
+            for d_i in range( 1, sentence_len ):
                 # print( "D_i reach {}, with d_input dim {}".format( d_i, d_input.size() ) )
                 d_out, d_out_logit, d_hidden, context = self.decoder( d_input, d_hidden, batch_size, encoder_output, context )
                 d_input = tar_var[ d_i ]
                 if USE_CUDA: d_input = d_input.cuda()
+                # print( d_out_logit.size(), d_input.size() )
                 scores += self.loss( d_out_logit, d_input )
                 # d_input = self.tar_embedder( topi.type( torch.LongTensor ) ).view( 1, batch_size, self.embed_size )
 
