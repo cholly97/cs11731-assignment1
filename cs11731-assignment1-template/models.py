@@ -67,7 +67,7 @@ class BaselineGRUDecoder( nn.Module ):
         # print( "Hidden size", hidden.size() )
         output, hidden = self.decoder( inputs, hidden )
 
-        output_logits = F.tanh( self.out( output[ 0 ] ) )
+        output_logits =  self.out( torch.tanh( output[ 0 ] ) )
         output = self.softmax( output_logits )
         return output, output_logits, hidden, last_context
 
