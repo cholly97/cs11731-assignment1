@@ -246,6 +246,7 @@ class NMT(object):
             longest_len = max( map( len, indices_list ) )
         for i in range( len( indices_list ) ):
             indices_list[ i ] += [ self.vocab.src.word2id[ "<pad>" ] ] * ( longest_len - len( indices_list[ i ] ) )
+            indices_list[ i ] = [ self.vocab.src.word2id[ "<s>" ] ] + indices_list + [ self.vocab.src.word2id[ "</s>" ] ]
             if self.reverse_encoder:
                 indices_list[ i ].reverse()
         return indices_list
