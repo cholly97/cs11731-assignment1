@@ -115,6 +115,32 @@ class Attention(nn.Module):
             energy = self.other.dot(energy)
         return energy
 
+class UnidirectionalGRUEncoder( nn.Module ):
+
+    def __init__( self, input_size, hidden_size, num_layer, src_vocab_size, dropout ):
+        super( BidirectionalGRUEncoder, self ).__init__()
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        self.dropout = dropout
+        self.num_layer = num_layer
+        self.src_vocab_size = src_vocab_size
+        self.embedder = nn.Embedding( src_vocab_size , input_size )
+        self.encoder = nn.GRU( input_size, hidden_size, num_layers = num_layer, bidirectional = False, dropout = dropout )
+        
+    def forward( self, embedded_input, hidden, batch_size ):
+        output = self.embedder( embedded_input )  
+        if hidden is None:
+            output, hidden = self.encoder( output )
+        else:
+            output, hidden = self.encoder( output, hidden )
+            # print( "Finish Encoder Layer {}".format( l ) )
+            # print( "Output size: {} hidden size: {}".format( output.size(), hidden.size() ) )
+        # concat the hidden layers of both direction together and reduce dimension
+        # hidden = torch.cat( [ hidden[i] for i in range( self.num_layer * 2) ], dim = 1  )
+        # hidden = F.leaky_relu( hidden )
+        # hidden = torch.reshape( hidden, ( batch_size, self.hidden_size ) )
+        # hidden = hidden.unsqueeze( 0 )
+        return output, hidden
 
 class BidirectionalGRUEncoder( nn.Module ):
 

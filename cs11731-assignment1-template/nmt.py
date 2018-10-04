@@ -79,6 +79,8 @@ class NMT(object):
         self.src_vocab_size = len( self.vocab.src.word2id )
         self.tar_vocab_size = len( self.vocab.tgt.word2id )
         self.batch_size = batch_size
+        # if unidirectional we need to reverse ordr
+        self.reverse_encoder = False
 
         if USE_TF:
             self.tf_model = TF_Model( batch_size, embed_size, hidden_size, lr, lr_decay )
@@ -86,8 +88,8 @@ class NMT(object):
         else:
             # initialize neural network laBaselineGRUEncoderyers...
             # ONLY WORKS FOR ! LAYER
-            self.encoder = BidirectionalGRUEncoder( self.embed_size, self.hidden_size, 1, self.src_vocab_size, self.dropout_rate )
-            self.decoder = AtttentGRUDecoder( self.embed_size, self.hidden_size, 1, self.tar_vocab_size, self.dropout_rate, "general" )
+            self.encoder = BidirectionalGRUEncoder( self.embed_size, self.hidden_size, 1, self.src_vocab_size, 0 )
+            self.decoder = AtttentGRUDecoder( self.embed_size, self.hidden_size, 1, self.tar_vocab_size, 0, "general" )
             self.encoder.to( DEVICE )
             self.decoder.to( DEVICE )
             self.lr = 1e-4
@@ -98,6 +100,7 @@ class NMT(object):
 
             # create weight for the loss function on tar side to mask out <pad>
             weight = np.ones( self.tar_vocab_size )
+            weight[ 0: 4 ] = 0
             weight = torch.tensor( weight, dtype = torch.float ).cuda()
             self.loss = nn.CrossEntropyLoss( weight = weight )
 
@@ -228,6 +231,8 @@ class NMT(object):
             longest_len = max( map( len, indices_list ) )
         for i in range( len( indices_list ) ):
             indices_list[ i ] += [ self.vocab.src.word2id[ "<pad>" ] ] * ( longest_len - len( indices_list[ i ] ) )
+            if self.reverse_encoder:
+                indices_list[ i ].reverse()
         return indices_list
     
     # def embed( self, sentence_list, _type = "src" ):
