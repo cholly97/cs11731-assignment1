@@ -95,7 +95,7 @@ class NMT(object):
         self.tar_vocab_size = len( self.vocab.tgt.word2id )
         self.batch_size = batch_size
         # if unidirectional we need to reverse ordr
-        self.reverse_encoder = False
+        self.reverse_encoder = True
 
         if USE_TF:
             self.tf_model = TF_Model( batch_size, embed_size, hidden_size, lr, lr_decay )

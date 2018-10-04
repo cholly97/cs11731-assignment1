@@ -48,6 +48,7 @@ class BaselineGRUDecoder( nn.Module ):
         self.tar_vocab_size = tar_vocab_size
         self.embedder = nn.Embedding( tar_vocab_size, input_size )
         self.decoder = nn.GRU( input_size, hidden_size, num_layers = num_layer, dropout = dropout )
+        self.decode_to_out = nn.Linear( hidden_size, hidden_size )
         self.out = nn.Linear( hidden_size, tar_vocab_size )
         self.softmax = nn.LogSoftmax( dim=1 )
         self.attention = Attention( self.hidden_size, method = attention_mode )
@@ -67,7 +68,7 @@ class BaselineGRUDecoder( nn.Module ):
         # print( "Hidden size", hidden.size() )
         output, hidden = self.decoder( inputs, hidden )
 
-        output_logits =  self.out( torch.tanh( output[ 0 ] ) )
+        output_logits =  self.out( torch.tanh( self.decode_to_out( output[ 0 ]  ) ) )
         output = self.softmax( output_logits )
         return output, output_logits, hidden, last_context
 
