@@ -108,9 +108,9 @@ class NMT(object):
             self.encoder.to( DEVICE )
             self.decoder.to( DEVICE )
             self.lr = 1e-4
-            self.encoder_optim = optim.Adam( filter( lambda x: x.requires_grad, self.encoder.parameters() ),
+            self.encoder_optim = optim.SGD( filter( lambda x: x.requires_grad, self.encoder.parameters() ),
                                     lr=self.lr )
-            self.decoder_optim = optim.Adam( filter( lambda x: x.requires_grad, self.decoder.parameters() ),
+            self.decoder_optim = optim.SGD( filter( lambda x: x.requires_grad, self.decoder.parameters() ),
                                     lr=self.lr )
 
             # create weight for the loss function on tar side to mask out <pad>
@@ -225,10 +225,7 @@ class NMT(object):
                 if USE_CUDA: d_input = d_input.cuda()
                 # print( d_out_logit.size(), d_input.size() )
                 scores += self.loss( d_out_logit, d_input )
-                # d_input = self.tar_embedder( topi.type( torch.LongTensor ) ).view( 1, batch_size, self.embed_size )
 
-                
-            # print( "Exit decode" )
         return scores
     # begin yingjinl
     def pad_batch( self, indices_list, _type = "src" ):
@@ -363,7 +360,7 @@ class NMT(object):
             d_prev_word_batch = torch.tensor( index ).reshape( (1,1 ) ).cuda()
             d_hidden, prob_list, context = self.decode_one_step(d_hidden, d_prev_word_batch, context, encoder_output = encoder_output)
             _, index = torch.topk( prob_list, 1 )
-            decode_array.append( index.cpu().item() )
+            decode_array.append( index.cpu().data.numpy() )
             time += 1
         res =  [ self.vocab.tgt.id2word[ i ] for i in decode_array ]
         print("res", res )

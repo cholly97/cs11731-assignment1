@@ -48,7 +48,7 @@ class BaselineGRUDecoder( nn.Module ):
         self.tar_vocab_size = tar_vocab_size
         self.embedder = nn.Embedding( tar_vocab_size, input_size )
         self.decoder = nn.GRU( input_size, hidden_size, num_layers = num_layer, dropout = dropout )
-        self.out = nn.Linear( input_size, tar_vocab_size )
+        self.out = nn.Linear( hidden_size, tar_vocab_size )
         self.softmax = nn.LogSoftmax( dim=1 )
         self.attention = Attention( self.hidden_size, method = attention_mode )
 
@@ -82,9 +82,9 @@ class Attention(nn.Module):
 
         # Define layers
         if self.method == 'general':
-            self.attention = nn.Linear(self.hidden_size, self.hidden_size)
+            self.attention = nn.Linear(self.hidden_size, self.hidden_size, bias = False)
         elif self.method == 'concat':
-            self.attention = nn.Linear(self.hidden_size * 2, self.hidden_size)
+            self.attention = nn.Linear(self.hidden_size * 2, self.hidden_size, bias = False)
             self.other = nn.Parameter(torch.FloatTensor(1, self.hidden_size))
 
 
@@ -195,7 +195,7 @@ class AtttentGRUDecoder( nn.Module ):
         self.tar_vocab_size = tar_vocab_size
         self.embedder = nn.Embedding( tar_vocab_size, input_size )
         self.decoder = nn.GRU( input_size, hidden_size, num_layers = num_layer, dropout = dropout )
-        self.out = nn.Linear( hidden_size + input_size, tar_vocab_size )
+        self.out = nn.Linear( hidden_size + hidden_size, tar_vocab_size )
         self.softmax = nn.LogSoftmax( dim=1 )
         self.attention = Attention( self.hidden_size, method = attention_mode )
 
@@ -206,12 +206,6 @@ class AtttentGRUDecoder( nn.Module ):
     def forward( self, inputs, hidden, batch_size, last_context, encoder_output ):
         inputs = self.embedder( inputs.view( ( 1, batch_size ) ) )
         seq_len, _, e_hidden_size = encoder_output.size()
-        # inputs = inputs.view( 1, batch_size, self.input_size )
-        # inputs = inputs.view( batch_size, self.input_size )
-        # last_context = last_context.view( ( 1, batch_size, self.hidden_size ) )
-        # print( "decoder true input size", self.input_size, self.hidden_size  )
-        # print( "output size :", output.size() )
-        # print( "Hidden size", hidden.size() )
         output, hidden = self.decoder( inputs, hidden )
 
         attention_weights = torch.reshape( self.attention( output, encoder_output ), ( batch_size, 1, seq_len ) )
