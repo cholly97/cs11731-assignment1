@@ -108,9 +108,9 @@ class NMT(object):
             self.encoder.to( DEVICE )
             self.decoder.to( DEVICE )
             self.lr = 1e-4
-            self.encoder_optim = optim.Adam( filter( lambda x: x.requires_grad, self.encoder.parameters() ),
+            self.encoder_optim = optim.SGD( filter( lambda x: x.requires_grad, self.encoder.parameters() ),
                                     lr=self.lr )
-            self.decoder_optim = optim.Adam( filter( lambda x: x.requires_grad, self.decoder.parameters() ),
+            self.decoder_optim = optim.SGD( filter( lambda x: x.requires_grad, self.decoder.parameters() ),
                                     lr=self.lr )
 
             # create weight for the loss function on tar side to mask out <pad>
@@ -225,10 +225,7 @@ class NMT(object):
                 if USE_CUDA: d_input = d_input.cuda()
                 # print( d_out_logit.size(), d_input.size() )
                 scores += self.loss( d_out_logit, d_input )
-                # d_input = self.tar_embedder( topi.type( torch.LongTensor ) ).view( 1, batch_size, self.embed_size )
 
-                
-            # print( "Exit decode" )
         return scores
     # begin yingjinl
     def pad_batch( self, indices_list, _type = "src" ):
