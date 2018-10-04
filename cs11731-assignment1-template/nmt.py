@@ -103,7 +103,7 @@ class NMT(object):
         else:
             # initialize neural network laBaselineGRUEncoderyers...
             # ONLY WORKS FOR ! LAYER
-            self.encoder = BidirectionalGRUEncoder( self.embed_size, self.hidden_size, 1, self.src_vocab_size, 0 )
+            self.encoder = UnidirectionalGRUEncoder( self.embed_size, self.hidden_size, 1, self.src_vocab_size, 0 )
             self.decoder = AtttentGRUDecoder( self.embed_size, self.hidden_size, 1, self.tar_vocab_size, 0, "general" )
             self.encoder.to( DEVICE )
             self.decoder.to( DEVICE )
