@@ -38,28 +38,38 @@ class BaselineGRUEncoder( nn.Module ):
         return output, hidden
 
 class BaselineGRUDecoder( nn.Module ):
-    def __init__( self, input_size, hidden_size, output_size, num_layer ):
+    def __init__( self, input_size, hidden_size, num_layer, tar_vocab_size, dropout, attention_mode ):
         super( BaselineGRUDecoder, self ).__init__()
         self.input_size = input_size
         self.num_layer = num_layer
         self.inut_size = input_size
         self.hidden_size = hidden_size
-        self.output_size = output_size
-        self.decoder = nn.GRU( input_size, hidden_size, num_layers = num_layer )
-        self.out = nn.Linear( hidden_size, output_size )
+        self.dropout = dropout
+        self.tar_vocab_size = tar_vocab_size
+        self.embedder = nn.Embedding( tar_vocab_size, input_size )
+        self.decoder = nn.GRU( input_size, hidden_size, num_layers = num_layer, dropout = dropout )
+        self.out = nn.Linear( input_size, tar_vocab_size )
         self.softmax = nn.LogSoftmax( dim=1 )
+        self.attention = Attention( self.hidden_size, method = attention_mode )
 
+    def decoder_context_init( self, inputs ):
+        [ _, batch_size ] = inputs.size()
+        return Variable( torch.zeros( 1, batch_size, self.hidden_size ) ).cuda()
     # decoder's input should start from the SOS token
-    def forward( self, inputs, hidden, batch_size ):
+    def forward( self, inputs, hidden, batch_size, last_context, encoder_output ):
+        inputs = self.embedder( inputs.view( ( 1, batch_size ) ) )
+        seq_len, _, e_hidden_size = encoder_output.size()
         # inputs = inputs.view( 1, batch_size, self.input_size )
         # inputs = inputs.view( batch_size, self.input_size )
-        output = inputs
+        # last_context = last_context.view( ( 1, batch_size, self.hidden_size ) )
         # print( "decoder true input size", self.input_size, self.hidden_size  )
         # print( "output size :", output.size() )
         # print( "Hidden size", hidden.size() )
-        output, hidden = self.decoder( output, hidden )
-        output = self.softmax( self.out( output[ 0 ] ) )
-        return output, hidden
+        output, hidden = self.decoder( inputs, hidden )
+
+        output_logits = F.tanh( self.out( output[ 0 ] ) )
+        output = self.softmax( output_logits )
+        return output, output_logits, hidden, last_context
 
 
 class Attention(nn.Module):
@@ -208,6 +218,6 @@ class AtttentGRUDecoder( nn.Module ):
         context = torch.bmm( attention_weights, encoder_output.reshape( batch_size, seq_len, e_hidden_size ) )
         context = context.reshape( 1, batch_size, e_hidden_size )
         output = torch.cat( ( output, context ), 2 )
-        output_logits = self.out( output[ 0 ] )
+        output_logits = F.tanh( self.out( output[ 0 ] ) )
         output = self.softmax( output_logits )
         return output, output_logits, hidden, context

@@ -41,4 +41,4 @@ python nmt.py train --train-src "data/train.de-en.de.wmixerprep" --train-tgt "da
 python nmt.py decode --cuda 1 --beam-size 5 --max-decoding-time-step 100 --model-path work_dir/model.bin --test-source-file data/test.de-en.de --test-target-file data/test.de-en.en aaa bbb ccc work_dir/decode.txt
 ```
 
-python nmt.py decode --cuda 1 --beam-size 5 --max-decoding-time-step 100 --embed-size 256 --hidden-size 256 --vocab work_dir/vocab.bin work_dir/model.bin data/test.de-en.de data/test.de-en.en work_dir/decode.txt
+python nmt.py decode work_dir/model.bin data/test.de-en.de data/test.de-en.en work_dir/decode.txt
