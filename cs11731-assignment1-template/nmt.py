@@ -72,7 +72,7 @@ class Hypothesis_(object):
         self.d_hidden = d_hidden
         self.indices = indices
         self.score = score
-        self.complete = self.indices[-1] != 2 # 2 is the index of '</s>'
+        self.complete = self.indices[-1] == 2 # 2 is the index of '</s>'
 
     def indices_to_words(self, id2word):
         return Hypothesis([id2word[i] for i in self.indices], self.score)
@@ -360,7 +360,7 @@ class NMT(object):
             d_prev_word_batch = torch.tensor( index ).reshape( (1,1 ) ).cuda()
             d_hidden, prob_list, context = self.decode_one_step(d_hidden, d_prev_word_batch, context, encoder_output = encoder_output)
             _, index = torch.topk( prob_list, 1 )
-            decode_array.append( index.cpu().data.numpy() )
+            decode_array.append( index.cpu().item() )
             time += 1
         res =  [ self.vocab.tgt.id2word[ i ] for i in decode_array ]
         print("res", res )
