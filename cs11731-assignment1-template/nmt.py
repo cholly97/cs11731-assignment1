@@ -310,28 +310,28 @@ class NMT(object):
         for hypothesis in hypotheses:
             partition = complete if hypothesis.complete else incomplete
             partition.append(hypothesis)
-        complete_len = len(complete)
+        incomplete_len = len( incomplete )
 
-        pad_size = self.batch_size - len(incomplete)
-        d_hidden = torch.cat( [ hypothesis.d_hidden for hypothesis in incomplete ], dim = 0 )
-        d_prev_word_batch = torch.cat( [ torch.tensor( hypothesis.indices[ -1 ] ) for hypothesis in incomplete ], dim = 0 )
-        d_hidden, prob_list, context = self.decode_one_step(d_hidden, d_prev_word_batch, last_context, encoder_output = encoder_output)
+        d_hidden = torch.cat( [ hypothesis.d_hidden.unsqueeze( 0 ) for hypothesis in incomplete ], dim = 0 ).unsqueeze(0) # ( 1: sentence_len, len(incomplete): batch_size, hidden_size )
+        d_prev_word_batch = torch.tensor( [ [ hypothesis.indices[ -1 ] for hypothesis in incomplete ] ] ).cuda()
+        d_hidden, prob_list, context = self.decode_one_step( d_hidden, d_prev_word_batch, last_context, encoder_output = encoder_output )
 
-        all_probs = [prob + complete[i].score
-                     for prob in prob_list[0][i] for i in range(complete_len)] + \
-                     [hypothesis.score for hypothesis in complete]
-        top_indices = np.argsort(all_probs, axis = None)[-beam_size:]
+        all_probs = [ prob.cpu().item() + incomplete[ i ].score
+                     for i in range( incomplete_len )
+                     for prob in prob_list[ i ] ] + \
+                     [ hypothesis.score for hypothesis in complete ] # len( all_probs ) == V * incomplete_len + complete_len
+        top_indices = np.argsort( all_probs )[ -beam_size: ]
 
         new_hypotheses = []
-        V = len(self.vocab.tgt)
-        for index in top_indices:
-            complete_idx = index - V * complete_len
-            if complete_idx < 0:
-                hyp_idx, word_idx = divmod(index, V)
+        V = len( self.vocab.tgt )
+        for index in top_indices.tolist():
+            complete_idx = index - V * incomplete_len
+            if complete_idx < 0: # index corresponds to incomplete hypothesis
+                hyp_idx, word_idx = divmod( index, V ) # = index / V, index % V
                 new_hypothesis = Hypothesis_(
-                    d_hidden[hyp_idx],
-                    complete[hyp_idx].indices + [word_idx],
-                    all_probs[index])
+                    d_hidden[ 0 ][ hyp_idx ], # ( hidden_size )
+                    incomplete[ hyp_idx ].indices + [ word_idx ],
+                    all_probs[ index ] )
             else:
                 new_hypothesis = complete[complete_idx]
 
@@ -378,16 +378,18 @@ class NMT(object):
                 score: float: the log-likelihood of the target sentence
         """
 
-        src_encodings, decoder_init_state, encoder_output = self.encode([src_sent])
+        src_encodings, decoder_init_state, encoder_output = self.encode( [ src_sent ] )
         context = torch.zeros( 3,2 ).cuda()
         time = 0
-        hypotheses = [Hypothesis_(decoder_init_state) for _ in range(beam_size)]
-        while(not all(hypothesis.complete for hypothesis in hypotheses)
-              and time < max_decoding_time_step):
+        hypotheses = [ Hypothesis_( decoder_init_state[ 0 ][ 0 ] ) ]
+        while( not all(hypothesis.complete for hypothesis in hypotheses )
+               and time < max_decoding_time_step ):
             time += 1
-            hypotheses, context = self.new_hypotheses(hypotheses, beam_size, context, encoder_output)
+            hypotheses, context = self.new_hypotheses( hypotheses, beam_size, context, encoder_output )
+            print( 't = ' + str( time ) )
+            print( '\n'.join( [ ' '.join( hypothesis.indices_to_words( self.vocab.tgt.id2word ).value ) for hypothesis in hypotheses ] ) )
 
-        return [hypothesis.indices_to_words(self.vocab.tgt.id2word) for hypothesis in hypotheses]
+        return [ hypothesis.indices_to_words( self.vocab.tgt.id2word ) for hypothesis in hypotheses ]
 
     def evaluate_ppl(self, dev_data, model, batch_size: int=32):
         """
