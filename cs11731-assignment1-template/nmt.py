@@ -104,7 +104,7 @@ class NMT(object):
             # initialize neural network laBaselineGRUEncoderyers...
             # ONLY WORKS FOR ! LAYER
             self.encoder = UnidirectionalGRUEncoder( self.embed_size, self.hidden_size, 1, self.src_vocab_size, 0.2 )
-            self.decoder = BaselineGRUDecoder( self.embed_size, self.hidden_size, 1, self.tar_vocab_size, 0.2, "general" )
+            self.decoder = AtttentGRUDecoder( self.embed_size, self.hidden_size, 1, self.tar_vocab_size, 0.2, "general" )
             self.encoder.to( DEVICE )
             self.decoder.to( DEVICE )
             self.lr = 1e-4
@@ -350,7 +350,7 @@ class NMT(object):
         d_hidden, prob_list, context = self.decode_one_step( d_hidden, decoder_init_state, context, encoder_output = encoder_output)
         _, index = torch.topk( prob_list, 1 )
         decode_array.append( index.cpu().item() )
-        while index != 1 and time < max_decoding_time_step:
+        while index != 2 and time < max_decoding_time_step:
 
             d_prev_word_batch = torch.tensor( index ).reshape( (1,1 ) ).cuda()
             d_hidden, prob_list, context = self.decode_one_step(d_hidden, d_prev_word_batch, context, encoder_output = encoder_output)
@@ -610,7 +610,7 @@ def beam_search(model: NMT, test_data_src: List[List[str]], beam_size: int, max_
 
     hypotheses = []
     for src_sent in tqdm(test_data_src, desc='Decoding', file=sys.stdout):
-        # res = model.top_1_search( src_sent, max_decoding_time_step=max_decoding_time_step )
+        res = model.top_1_search( src_sent, max_decoding_time_step=max_decoding_time_step )
         example_hyps = model.beam_search(src_sent, beam_size=beam_size, max_decoding_time_step=max_decoding_time_step)
 
         hypotheses.append(example_hyps)

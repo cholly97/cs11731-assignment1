@@ -117,7 +117,8 @@ class Attention(nn.Module):
         elif self.method == 'general':
             energy = self.attention( torch.squeeze( encoder_output, 0 ) )
             # print( "hidden", hidden.size() )
-            # print( "energy", energy.size() )
+            if len( energy.size() ) == 1:
+                energy = energy.unsqueeze( 0 )
             energy = torch.matmul( hidden[0], torch.t( energy )  )
             # torch.matmul( torch.t( hidden ),  energy  )
             energy = torch.diag( energy )
@@ -196,8 +197,8 @@ class AtttentGRUDecoder( nn.Module ):
         self.tar_vocab_size = tar_vocab_size
         self.embedder = nn.Embedding( tar_vocab_size, input_size )
         self.decoder = nn.GRU( input_size, hidden_size, num_layers = num_layer, dropout = dropout )
-        self.context_to_out = nn.Linear( hidden_size , tar_vocab_size )
-        self.out = nn.Linear( hidden_size + hidden_size, hidden_size )
+        self.out = nn.Linear( hidden_size , tar_vocab_size )
+        self.context_to_out = nn.Linear( hidden_size + hidden_size, hidden_size )
         self.softmax = nn.LogSoftmax( dim=1 )
         self.attention = Attention( self.hidden_size, method = attention_mode )
 
@@ -220,6 +221,7 @@ class AtttentGRUDecoder( nn.Module ):
         output = torch.cat( ( output, context ), 2 )
         output_logits = F.tanh( self.context_to_out( output[ 0 ] ) )
         # ( batch_size, hidden )
-        output = self.softmax( self.out( output_logits ) )
+        output_logits =  self.out( output_logits )
+        output = self.softmax( output_logits )
         # batch_size, vocab_size
         return output, output_logits, hidden, context
