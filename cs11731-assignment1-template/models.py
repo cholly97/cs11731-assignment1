@@ -214,6 +214,8 @@ class AtttentGRUDecoder( nn.Module ):
 
         attention_weights = self.attention( output, encoder_output ).permute( 1,0 ).unsqueeze( 1 )
         # ( batch_size, 1, sequence_len )
+        print( "attention weights", attention_weights.size() )
+        print( "encoder output", encoder_output.permute( 1,0,2 ).size() )
         context = torch.bmm( attention_weights, encoder_output.permute( 1, 0, 2 ) )
         # ( batch_size, 1, hidden )
         context = context.permute( 1, 0, 2 )
