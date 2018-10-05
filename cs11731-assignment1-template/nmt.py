@@ -95,7 +95,7 @@ class NMT(object):
         self.tar_vocab_size = len( self.vocab.tgt.word2id )
         self.batch_size = batch_size
         # if unidirectional we need to reverse ordr
-        self.reverse_encoder = True
+        self.reverse_encoder = False
 
         if USE_TF:
             self.tf_model = TF_Model( batch_size, embed_size, hidden_size, lr, lr_decay )
@@ -103,8 +103,8 @@ class NMT(object):
         else:
             # initialize neural network laBaselineGRUEncoderyers...
             # ONLY WORKS FOR ! LAYER
-            self.encoder = UnidirectionalGRUEncoder( self.embed_size, self.hidden_size, 1, self.src_vocab_size, 0 )
-            self.decoder = BaselineGRUDecoder( self.embed_size, self.hidden_size, 1, self.tar_vocab_size, 0, "general" )
+            self.encoder = UnidirectionalGRUEncoder( self.embed_size, self.hidden_size, 1, self.src_vocab_size, 0.2 )
+            self.decoder = BaselineGRUDecoder( self.embed_size, self.hidden_size, 1, self.tar_vocab_size, 0.2, "general" )
             self.encoder.to( DEVICE )
             self.decoder.to( DEVICE )
             self.lr = 1e-4
@@ -115,7 +115,8 @@ class NMT(object):
 
             # create weight for the loss function on tar side to mask out <pad>
             weight = np.ones( self.tar_vocab_size )
-            weight[ 0: 4 ] = 0
+            weight[ 0 ] = 0
+            weight[ 3 ] = 0
             weight = torch.tensor( weight, dtype = torch.float ).cuda()
             self.loss = nn.CrossEntropyLoss( weight = weight )
 
@@ -311,19 +312,13 @@ class NMT(object):
             partition.append(hypothesis)
         complete_len = len(complete)
 
-        pad_size = self.batch_size - complete_len
-        d_hidden = np.pad(
-            [hypothesis.d_hidden for hypothesis in incomplete],
-            ((0, pad_size), (0, 0)),
-            mode = 'constant', constant_values = 0)
-        d_prev_word_batch = np.pad(
-            [[hypothesis.indices[-1] for hypothesis in incomplete]],
-            ((0, 0), (0, pad_size)),
-            mode = 'constant', constant_values = 0)
+        pad_size = self.batch_size - len(incomplete)
+        d_hidden = torch.cat( [ hypothesis.d_hidden for hypothesis in incomplete ], dim = 0 )
+        d_prev_word_batch = torch.cat( [ torch.tensor( hypothesis.indices[ -1 ] ) for hypothesis in incomplete ], dim = 0 )
         d_hidden, prob_list, context = self.decode_one_step(d_hidden, d_prev_word_batch, last_context, encoder_output = encoder_output)
 
         all_probs = [prob + complete[i].score
-                     for prob in prob_list[i] for i in range(complete_len)] + \
+                     for prob in prob_list[0][i] for i in range(complete_len)] + \
                      [hypothesis.score for hypothesis in complete]
         top_indices = np.argsort(all_probs, axis = None)[-beam_size:]
 
@@ -355,7 +350,7 @@ class NMT(object):
         d_hidden, prob_list, context = self.decode_one_step( d_hidden, decoder_init_state, context, encoder_output = encoder_output)
         _, index = torch.topk( prob_list, 1 )
         decode_array.append( index.cpu().item() )
-        while index != 2 and time < max_decoding_time_step:
+        while index != 1 and time < max_decoding_time_step:
 
             d_prev_word_batch = torch.tensor( index ).reshape( (1,1 ) ).cuda()
             d_hidden, prob_list, context = self.decode_one_step(d_hidden, d_prev_word_batch, context, encoder_output = encoder_output)
@@ -615,7 +610,7 @@ def beam_search(model: NMT, test_data_src: List[List[str]], beam_size: int, max_
 
     hypotheses = []
     for src_sent in tqdm(test_data_src, desc='Decoding', file=sys.stdout):
-        res = model.top_1_search( src_sent, max_decoding_time_step=max_decoding_time_step )
+        # res = model.top_1_search( src_sent, max_decoding_time_step=max_decoding_time_step )
         example_hyps = model.beam_search(src_sent, beam_size=beam_size, max_decoding_time_step=max_decoding_time_step)
 
         hypotheses.append(example_hyps)
